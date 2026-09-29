@@ -1,6 +1,6 @@
 # Sổ trả nợ 2.0 — nền tảng giao diện
 
-Bản alpha độc lập với bản 1.3.0. Triển khai song song tại `/Loan_Project/v2/`, không đăng ký service worker và không ghi localStorage. Có thể đăng nhập Supabase và tải bản chụp chỉ đọc khi người dùng yêu cầu. Nhánh phát triển: `feat/v2-interface`.
+Bản preview độc lập với bản 1.3.0. Triển khai song song tại `/Loan_Project/v2/`, không đăng ký service worker và không ghi localStorage. Hỗ trợ đăng nhập Supabase, tải bản chụp, xuất sao lưu đầy đủ và lưu thu/chi khi người dùng yêu cầu. Nhánh phát triển: `feat/v2-interface`.
 
 ## Chạy tại thư mục gốc repo
 
@@ -28,12 +28,12 @@ Mở địa chỉ Vite in ra (mặc định http://127.0.0.1:5173). Bản build 
 ## Các bước tiếp theo
 
 1. Tách nghiệp vụ hiện tại thành module có kiểm thử đối chiếu với 1.3; thay bộ tổng hợp chỉ đọc của alpha bằng module dùng chung.
-2. Hoàn thiện vòng đời phiên, đăng ký/phục hồi mật khẩu và quản lý trạng thái; đánh giá xung đột đồng bộ trước khi mở quyền ghi.
+2. Hoàn thiện vòng đời phiên, đăng ký/phục hồi mật khẩu và quản lý trạng thái; mở rộng bảo vệ xung đột cho các client cũ.
 3. Chuyển chi tiêu, nợ và lịch trả, báo cáo rồi các màn hình còn lại.
 4. Bổ sung kiểm thử trình duyệt/mobile; kiểm tra CSP, cấu hình frontend-safe, đường dẫn Pages và chiến lược cache.
 5. Giữ preview ở thư mục con; chưa thay trang chính.
 
-Không đưa bản alpha thay trang chính: mới có ghi thu/chi tiền, lịch dự phóng khoản công thức hoặc đồng bộ hai chiều. Chưa tách hoàn toàn nghiệp vụ dùng chung: module alpha được bảo vệ bằng kiểm thử đối chiếu, bản 1.3 chưa bị sửa. Không sửa SQL trong đợt giao diện này. Giao diện có thể gọi Google Fonts và Supabase đã cấu hình; font hệ thống là dự phòng.
+Chưa thay trang chính: mới có ghi thu/chi tiền; chưa có lịch dự phóng khoản công thức hoặc đồng bộ nền. Nghiệp vụ v2 được bảo vệ bằng kiểm thử đối chiếu với 1.3 nhưng chưa tách hoàn toàn thành module dùng chung. Giao diện có thể gọi Google Fonts và Supabase đã cấu hình; font hệ thống là dự phòng.
 
 ## Supabase: tải và ghi thu/chi
 
@@ -47,6 +47,10 @@ Sao chép `v2/.env.example` thành `v2/.env.local`, điền `VITE_SUPABASE_URL` 
 - Các kiểm thử auth dùng mock HTTP; chưa xác minh đăng nhập/tải dữ liệu với tài khoản thật.
 ## Ghi thu/chi thử nghiệm
 
-Biểu mẫu tài khoản ghi PATCH có điều kiện user_id và updated_at. Giữ nguyên payload gốc, thêm giao dịch ID mới và tăng updatedAt. Chỉ hỗ trợ thu/chi tiền, không mua tín dụng/trả nợ. Không upload JSON. Không tạo hàng mới. Cần RLS và trigger updated_at theo schema hiện có; không chạy migration.
+Biểu mẫu tài khoản ghi PATCH có điều kiện user_id và updated_at. Giữ nguyên payload gốc, thêm giao dịch ID mới và tăng updatedAt. Chỉ hỗ trợ thu/chi tiền, không mua tín dụng/trả nợ. Không upload JSON. Không tạo hàng mới. Cần RLS và trigger updated_at theo schema hiện có.
 
 Không mở đồng thời bản 1.3 để sửa: bản cũ chưa có bảo vệ xung đột. Xuất sao lưu trước khi thử ghi. Nếu mất mạng lúc lưu, giao dịch có thể đã commit: tải lại kiểm tra lịch sử trước khi nhập lại. Không tự retry. Đóng kết nối không hoàn tác ghi đã commit. Kiểm thử cloud hiện dùng mock; chưa xác minh ghi với tài khoản thật hoặc trình duyệt/mobile.
+
+## Nâng cấp cơ sở dữ liệu
+
+Xem `sql/README.md` ở thư mục gốc cho hướng dẫn migration `002_data_history.sql` và kiểm tra RLS/trigger bằng `verify_v2.sql`. Migration bổ sung revision và tối đa 20 phiên bản payload trước đó, không chia dữ liệu sang nguồn thứ hai. Deploy Pages không tự thực thi SQL trên Supabase. Nút “Tải sao lưu đầy đủ từ tài khoản” xuất toàn bộ payload, không chỉ các trường v2 hiển thị; giữ tệp ở nơi riêng tư.

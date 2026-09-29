@@ -5,8 +5,8 @@
 -- tài khoản nào chỉ đọc và ghi được hàng của chính mình.
 -- =====================================================================
 
--- Bảng cũ (theo device_id) không còn dùng, xoá để không để lại chính sách yếu.
-drop table if exists public.user_state cascade;
+-- Không xoá bảng cũ tự động. Nếu còn user_state, quản trị viên cần sao lưu
+-- và thu hồi quyền truy cập riêng trước khi quyết định lưu trữ/xoá.
 
 create table if not exists public.user_data (
   user_id    uuid        primary key references auth.users(id) on delete cascade,
@@ -20,7 +20,7 @@ create table if not exists public.user_data (
 create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$
 begin
-  new.updated_at = now();
+  new.updated_at = greatest(clock_timestamp(), old.updated_at + interval '1 microsecond');
   return new;
 end;
 $$;

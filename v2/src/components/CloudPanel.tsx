@@ -62,8 +62,19 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
       onLoad(data, `Tài khoản ${account} · đã lưu lúc ${new Date().toLocaleTimeString('vi-VN')}`);
       setAmount(''); setNote(''); setMessage('Đã lưu lên Supabase. Không nhập lại giao dịch này ở bản 1.3.');
     } catch (error) {
+      if (!controller.signal.aborted && error instanceof CloudError && (error.status === 401 || error.status === 403)) { setAccount(''); setWallets([]); onDisconnect(); }
       if (!controller.signal.aborted) setMessage(`${error instanceof Error ? error.message : 'Lưu thất bại.'} Tải lại và kiểm tra lịch sử trước khi thử lại; nếu mất mạng, giao dịch có thể đã được lưu.`);
     } finally { if (pending.current === controller) { pending.current = null; setBusy(false); } }
+  };
+  const exportBackup = () => {
+    try {
+      if (!client.current) return;
+      const url = URL.createObjectURL(new Blob([client.current.exportBackup()], { type: 'application/json' }));
+      const link = document.createElement('a'); link.href = url; link.download = `so-tra-no-${localDate()}.json`;
+      document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMessage('Đã yêu cầu tải sao lưu đầy đủ. Tệp chứa dữ liệu tài chính riêng tư; hãy lưu ở nơi an toàn.');
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Không xuất được sao lưu.'); }
   };
   return <section className="panel cloud-panel" aria-label="Tài khoản Supabase">
     <h2>Dữ liệu từ tài khoản</h2>
@@ -81,6 +92,7 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
           <Button type="submit">Lưu giao dịch lên Supabase</Button>
         </fieldset>
       </form>}
+      {account && <Button variant="outline" disabled={busy || !client.current?.canSave()} onClick={exportBackup}>Tải sao lưu đầy đủ từ tài khoản</Button>}
       {message && <p className="footnote" role="status">{message}</p>}
     </>}
   </section>;
