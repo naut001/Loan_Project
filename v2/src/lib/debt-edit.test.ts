@@ -4,6 +4,7 @@ import { createCloudClient } from './cloud';
 import { parseSnapshot } from './snapshot';
 
 const values = { name: 'Thẻ', dueDay: 10, stmtDay: 24, dueMode: 'day' as const, grace: 0 };
+const formula = { balance: 12000000, payment: 1000000, rate: 0 };
 const payload = { v: 1, updatedAt: 1, wallets: [], tx: {}, recv: [{ extra: 42 }], debts: [{ id: 'd', mode: 'custom', balance: 0, payment: 0, sched: [], extension: { keep: true }, ...values }] };
 it('tạo, sửa, xoá khoản trống giữ dữ liệu khác', () => {
   const draft = structuredClone(payload);
@@ -36,6 +37,30 @@ it('chặn mã không tồn tại và trùng mã', () => {
   draft.debts.push(structuredClone(draft.debts[0]));
   expect(() => editDebt(draft, values, 'd')).toThrow();
 });
+it('tạo và sửa công thức giữ trường mở rộng, không ghi tiền giải ngân', () => {
+  const draft = structuredClone(payload);
+  editDebt(draft, { ...values, formula });
+  const debt = draft.debts[1];
+  expect(debt).toMatchObject({ mode: 'formula', balance: 12000000, months: 12, original: 12000000, paid: {} });
+  Object.assign(debt, { extension: { keep: true } });
+  editDebt(draft, { ...values, formula: { ...formula, payment: 2000000 } }, debt.id);
+  expect(draft.debts[1]).toMatchObject({ months: 6, payment: 2000000, original: 12000000, extension: { keep: true } });
+  expect(draft.wallets).toEqual(payload.wallets); expect(draft.tx).toEqual(payload.tx); expect(draft.recv).toEqual(payload.recv);
+});
+it.each([{ rate: -1 }, { rate: Infinity }, { payment: 0 }, { balance: 1.5 }, { balance: 1e12 + 1 }, { rate: 12, payment: 1 }])('chặn công thức sai %j', change => {
+  const draft = structuredClone(payload);
+  expect(() => editDebt(draft, { ...values, formula: { ...formula, ...change } })).toThrow();
+  expect(draft).toEqual(payload);
+});
+it('không chuyển custom sang công thức hoặc sửa khoản có dấu trả cũ', () => {
+  const draft = structuredClone(payload);
+  expect(() => editDebt(draft, { ...values, formula }, 'd')).toThrow();
+  editDebt(draft, { ...values, formula });
+  Object.assign(draft.debts[1], { paid: { '2026-01': { prevBalance: 13000000 } } });
+  const before = structuredClone(draft);
+  expect(() => editDebt(draft, { ...values, formula }, draft.debts[1].id)).toThrow();
+  expect(draft).toEqual(before);
+});
 it('giữ giao dịch liên kết mồ côi, không xoá hoặc dời hạn nợ', () => {
   const draft = { ...structuredClone(payload), tx: { '2026-01': [{ id: 't', type: 'credit', wallet: '', amount: 10, date: '2026-01-01', debt: 'd', row: 'missing', extension: 42 }] } };
   const before = structuredClone(draft);
@@ -45,7 +70,9 @@ it('giữ giao dịch liên kết mồ côi, không xoá hoặc dời hạn nợ
   editDebt(draft, { ...values, name: 'Đổi tên' }, 'd');
   expect(draft.tx).toEqual(before.tx);
 });
-it.each(['ok', 'conflict', 'network'])('ghi có điều kiện %s', async outcome => {
+it.each(['ok', 'conflict', 'network', 'formula-ok', 'formula-conflict', 'formula-network'])('ghi có điều kiện %s', async scenario => {
+  const outcome = scenario.replace('formula-', '');
+  const savedValues = scenario.startsWith('formula-') ? { ...values, formula } : values;
   const reply = (value: unknown) => new Response(JSON.stringify(value));
   const request = vi.fn<typeof fetch>().mockResolvedValueOnce(reply({ access_token: 't', user: { id: 'u' } })).mockResolvedValueOnce(reply([{ payload, updated_at: '2026-01-01' }])).mockImplementationOnce(async (_url, options) => {
     if (outcome === 'network') throw new Error('offline');
@@ -56,11 +83,11 @@ it.each(['ok', 'conflict', 'network'])('ghi có điều kiện %s', async outcom
   await expect(client.saveDebt({ ...values, dueDay: 0 })).rejects.toThrow();
   expect(request).toHaveBeenCalledTimes(2);
   expect(JSON.parse(client.exportBackup()).data).toEqual(payload);
-  if (outcome === 'ok') expect((await client.saveDebt(values)).debts).toHaveLength(2);
+  if (outcome === 'ok') expect((await client.saveDebt(savedValues)).debts).toHaveLength(2);
   else {
-    await expect(client.saveDebt(values)).rejects.toThrow();
+    await expect(client.saveDebt(savedValues)).rejects.toThrow();
     expect(client.canSave()).toBe(false);
-    await expect(client.saveDebt(values)).rejects.toThrow();
+    await expect(client.saveDebt(savedValues)).rejects.toThrow();
   }
   expect(request).toHaveBeenCalledTimes(3);
   expect(request.mock.calls[2][1]?.method).toBe('PATCH');

@@ -26,7 +26,11 @@ expense transactions. Paid/partially paid and transaction-linked rows are protec
 duplicate row IDs and orphan links block edits. Totals are recalculated atomically.
 
 Still required before switching the main site:
-- Full debt CRUD: formula creation/editing.
+- Remaining debt-editor parity: term/payment calculators, additional metadata and
+  lender reconciliation. Formula creation and guarded editing now accept current
+  principal, annual rate and monthly payment, using the conversion amortization engine.
+  Editing formula parameters requires no paid history, schedule or linked transactions;
+  due-date changes remain blocked for debts with balances. No disbursement is recorded.
 - Receivable CRUD and collection history/undo.
 - Full planning/calculator/report parity and ICS export.
 - Full backup restoration and local persistence/synchronization.
