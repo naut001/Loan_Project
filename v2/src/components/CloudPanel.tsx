@@ -99,16 +99,19 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
       if (!controller.signal.aborted) setMessage(`${error instanceof Error ? error.message : 'Lưu thất bại.'} Tải lại và kiểm tra lịch sử trước khi thử lại; nếu mất mạng, giao dịch có thể đã được lưu.`);
     } finally { if (pending.current === controller) { pending.current = null; setBusy(false); } }
   };
-  const savePayment = async (values: DebtPayment) => {
+  const savePayment = async (values: DebtPayment | string) => {
     if (pending.current || !client.current?.canSave()) return;
-    if (!window.confirm(`Lưu thanh toán tổng ${(values.principal + values.interest + values.fee).toLocaleString('vi-VN')} đ và giảm kỳ nợ ${values.principal.toLocaleString('vi-VN')} đ?`)) return;
+    const undo = typeof values === 'string';
+    const item = undo ? Object.values(transactions).flat().find(t => t.id === values) : undefined;
+    if (undo && !item) return;
+    if (!window.confirm(typeof values === 'string' ? `Hoàn tác thanh toán ngày ${item?.date}, tổng ${item?.amount.toLocaleString('vi-VN')} đ? Bản ghi sẽ bị xoá và số dư được tính lại; dấu đã trả cũ vẫn giữ nguyên.` : `Lưu thanh toán tổng ${(values.principal + values.interest + values.fee).toLocaleString('vi-VN')} đ và giảm kỳ nợ ${values.principal.toLocaleString('vi-VN')} đ?`)) return;
     const controller = new AbortController(); pending.current = controller; setBusy(true); setMessage('Đang lưu thanh toán…');
     try {
-      const data = await client.current.payDebt(values, controller.signal);
+      const data = typeof values === 'string' ? await client.current.undoPayment(values, controller.signal) : await client.current.payDebt(values, controller.signal);
       if (controller.signal.aborted) return;
       setDebts(data.debts); setTransactions(data.tx);
       onLoad(data, `Tài khoản ${account} · đã lưu thanh toán`);
-      setMessage(client.current.canSave() ? 'Đã lưu thanh toán. Không ghi lại ở bản 1.3.' : 'Máy chủ đã phản hồi; tải lại kiểm tra trước khi tiếp tục.');
+      setMessage(client.current.canSave() ? (undo ? 'Đã hoàn tác thanh toán và tính lại số dư.' : 'Đã lưu thanh toán. Không ghi lại ở bản 1.3.') : 'Máy chủ đã phản hồi; tải lại kiểm tra trước khi tiếp tục.');
     } catch (error) {
       if (controller.signal.aborted) return;
       if (error instanceof CloudError && (error.status === 401 || error.status === 403)) { setAccount(''); onDisconnect(); }
@@ -202,7 +205,7 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
       </form>}
       {account && <WalletForm key={`${account}:${JSON.stringify(wallets)}`} wallets={wallets} disabled={busy || !client.current?.canSave()} onSave={saveWallet} onRemove={id => saveWallet(undefined, id)} />}
       {account && wallets.length > 0 && <BatchForm key={`${account}:${JSON.stringify(wallets)}`} wallets={wallets} disabled={busy || !client.current?.canSave()} onSave={saveBatch} />}
-      {account && wallets.length > 0 && <PaymentForm key={`${account}:${JSON.stringify(debts)}:${JSON.stringify(wallets)}`} data={{ debts, wallets, tx: transactions }} disabled={busy || !client.current?.canSave()} onSave={savePayment} />}
+      {account && wallets.length > 0 && <PaymentForm key={`${account}:${JSON.stringify(debts)}:${JSON.stringify(wallets)}`} data={{ debts, wallets, tx: transactions }} disabled={busy || !client.current?.canSave()} onSave={savePayment} onUndo={savePayment} />}
       {account && <BudgetForm data={{ wallets, tx: transactions, debts: [], budgets }} disabled={busy || !client.current?.canSave()} onSave={saveBudget} />}
       {account && <Button variant="outline" disabled={busy || !client.current?.canSave()} onClick={exportBackup}>Tải sao lưu đầy đủ từ tài khoản</Button>}
       {message && <p className="footnote" role="status">{message}</p>}

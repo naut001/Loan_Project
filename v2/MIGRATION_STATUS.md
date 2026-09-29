@@ -8,10 +8,11 @@ category selection, monthly budgets, monthly CSV, and atomic cash-expense batche
 Cash batches do not yet include credit purchases. Linked debt transactions cannot
 be edited or deleted with the ordinary cash editor.
 Partial/full payments into custom monthly schedule rows are implemented with atomic
-wallet/debt updates, separate extra interest/fees, and confirmation. Undo remains pending.
+wallet/debt updates, separate extra interest/fees, and confirmation. Linked payment undo
+is implemented with atomic updates, validation, and preservation of legacy paid markers.
 
 Still required before switching the main site:
-- Debt CRUD, payment undo, credit purchases/undo, schedule conversion.
+- Debt CRUD, credit purchases/undo, schedule conversion.
 - Receivable CRUD and collection history/undo.
 - Full planning/calculator/report parity and ICS export.
 - Full backup restoration and local persistence/synchronization.

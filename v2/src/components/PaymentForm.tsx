@@ -5,7 +5,8 @@ import { remaining } from '../lib/debt';
 import { localDate, money } from '../lib/format';
 import { Button } from './ui/button';
 
-export function PaymentForm({ data, disabled, onSave }: { data: Snapshot; disabled: boolean; onSave: (values: DebtPayment) => Promise<void> }) {
+export function PaymentForm({ data, disabled, onSave, onUndo }: { data: Snapshot; disabled: boolean; onSave: (values: DebtPayment) => Promise<void>; onUndo: (id: string) => Promise<void> }) {
+  const [undoId, setUndoId] = useState('');
   const [debt, setDebt] = useState('');
   const [index, setIndex] = useState('');
   const [wallet, setWallet] = useState(data.wallets[0]?.id || '');
@@ -27,7 +28,11 @@ export function PaymentForm({ data, disabled, onSave }: { data: Snapshot; disabl
       <label>Lãi ngoài lịch (đ)<input required type="number" min="0" max="1000000000000" step="1" value={interest} onChange={e => setInterest(e.target.value)} /></label>
       <label>Phí ngoài lịch (đ)<input required type="number" min="0" max="1000000000000" step="1" value={fee} onChange={e => setFee(e.target.value)} /></label>
       <label>Ghi chú<input maxLength={200} value={note} onChange={e => setNote(e.target.value)} /></label>
-    </div><p className="footnote">Tài khoản giảm tổng ba khoản; kỳ nợ chỉ giảm số trả vào kỳ. Không nhập lại lãi/phí đã nằm trong lịch. Chưa hỗ trợ hoàn tác thanh toán tại v2; hãy kiểm tra kỹ trước khi lưu.</p>
-    <Button type="submit">Lưu thanh toán kỳ nợ</Button></fieldset>
+    </div><p className="footnote">Tài khoản giảm tổng ba khoản; kỳ nợ chỉ giảm số trả vào kỳ. Không nhập lại lãi/phí đã nằm trong lịch.</p>
+    <Button type="submit">Lưu thanh toán kỳ nợ</Button>
+    <h3>Hoàn tác thanh toán đã ghi</h3>
+    <label>Giao dịch thanh toán<select value={undoId} onChange={e => setUndoId(e.target.value)}><option value="">Chọn thanh toán cần hoàn tác</option>{Object.values(data.tx).flat().filter(t => t.type === 'repayment').sort((a, b) => b.date.localeCompare(a.date)).map(t => <option key={t.id} value={t.id}>{t.date} · {data.debts.find(d => d.id === t.debt)?.name || 'Liên kết nợ không rõ'} · {money(t.amount)} · {t.note}</option>)}</select></label>
+    <p className="footnote">Xoá bản ghi thanh toán và hoàn lại số dư tính toán, không chuyển tiền thực tế. Dấu đã trả cũ của kỳ được giữ nguyên. Hãy tải sao lưu trước khi hoàn tác.</p>
+    <Button type="button" variant="outline" disabled={!undoId} onClick={() => void onUndo(undoId)}>Hoàn tác thanh toán đã chọn</Button></fieldset>
   </form>;
 }
