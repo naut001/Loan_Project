@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { CloudError, createCloudClient, type WalletEntry, type CashEntry } from '../lib/cloud';
+import { CloudError, createCloudClient, type WalletEntry, type BatchEntry } from '../lib/cloud';
 import { BatchForm } from './BatchForm';
 import { CreditForm } from './CreditForm';
 import type { CreditPurchase } from '../lib/credit';
@@ -139,14 +139,16 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
       setMessage(`${error instanceof Error ? error.message : 'Không lưu được thanh toán.'} Nếu đã gửi yêu cầu, tải lại kiểm tra trước khi thử lại.`);
     } finally { if (pending.current === controller) { pending.current = null; setBusy(false); } }
   };
-  const saveBatch = async (entries: CashEntry[]): Promise<boolean> => {
+  const saveBatch = async (entries: BatchEntry[]): Promise<boolean> => {
     if (pending.current || !client.current?.canSave()) return false;
+    if (!window.confirm(`Lưu ${entries.length} khoản chi, gồm ${entries.filter(e => e.type === 'credit').length} khoản mua tín dụng? Chỉ các dòng chi tiền làm giảm ví.`)) return false;
     const controller = new AbortController(); pending.current = controller; setBusy(true); setMessage('Đang lưu lô chi tiền…');
     try {
       const data = await client.current.addCashBatch(entries, controller.signal);
       if (controller.signal.aborted) return false;
       setTransactions(data.tx);
-      onLoad(data, `Tài khoản ${account} · đã lưu lô chi tiền`);
+      setDebts(data.debts);
+      onLoad(data, `Tài khoản ${account} · đã lưu lô chi`);
       setMessage(client.current.canSave() ? `Đã lưu ${entries.length} khoản chi. Không nhập lại ở bản 1.3.` : 'Máy chủ đã phản hồi; cần tải lại kiểm tra mốc cập nhật trước khi lưu tiếp.');
       return true;
     } catch (error) {
@@ -225,7 +227,7 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
         </fieldset>
       </form>}
       {account && <WalletForm key={`${account}:${JSON.stringify(wallets)}`} wallets={wallets} disabled={busy || !client.current?.canSave()} onSave={saveWallet} onRemove={id => saveWallet(undefined, id)} />}
-      {account && wallets.length > 0 && <BatchForm key={`${account}:${JSON.stringify(wallets)}`} wallets={wallets} disabled={busy || !client.current?.canSave()} onSave={saveBatch} />}
+      {account && <BatchForm key={`${account}:${JSON.stringify(wallets)}`} wallets={wallets} debts={debts} disabled={busy || !client.current?.canSave()} onSave={saveBatch} />}
       {account && wallets.length > 0 && <PaymentForm key={`${account}:${JSON.stringify(debts)}:${JSON.stringify(wallets)}`} data={{ debts, wallets, tx: transactions }} disabled={busy || !client.current?.canSave()} onSave={savePayment} onUndo={savePayment} />}
       {account && <CreditForm key={`${account}:${JSON.stringify(debts)}`} data={{ debts, wallets, tx: transactions }} disabled={busy || !client.current?.canSave()} onSave={saveCredit} />}
       {account && <BudgetForm data={{ wallets, tx: transactions, debts: [], budgets }} disabled={busy || !client.current?.canSave()} onSave={saveBudget} />}

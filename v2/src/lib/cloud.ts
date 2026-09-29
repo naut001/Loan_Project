@@ -9,6 +9,7 @@ export class CloudError extends Error {
 }
 interface Session { access_token: string; user: { id: string; email?: string } }
 export interface CashEntry { type: 'income' | 'expense' | 'transfer'; wallet: string; to?: string; amount: number; date: string; note: string; category?: string }
+export type BatchEntry = CashEntry | (CreditPurchase & { type: 'credit' });
 export interface WalletEntry { name: string; type: string; opening: number; openingDate: string }
 const validTimestamp = (value: unknown): value is string => typeof value === 'string' && Number.isFinite(Date.parse(value));
 export function createCloudClient(url: string, key: string, request: typeof fetch = fetch) {
@@ -136,13 +137,19 @@ export function createCloudClient(url: string, key: string, request: typeof fetc
       applyDebtPayment(payload, values);
       return commit(payload, signal);
     },
-    async addCashBatch(entries: CashEntry[], signal?: AbortSignal): Promise<Snapshot> {
+    async addCashBatch(entries: BatchEntry[], signal?: AbortSignal): Promise<Snapshot> {
       if (!session || !loaded || saving) throw new CloudError('Hãy tải lại dữ liệu tài khoản trước khi lưu.');
       if (!entries.length || entries.length > 100) throw new CloudError('Mỗi lô cần từ 1 đến 100 dòng.');
       const payload = structuredClone(loaded.payload);
       const snapshot = parseSnapshot(JSON.stringify(payload));
-      const buckets = payload.tx as Record<string, Record<string, unknown>[]>;
       for (const [index, entry] of entries.entries()) {
+        if (entry.type === 'credit') {
+          try { applyCreditPurchase(payload, entry); }
+          catch (error) { throw new CloudError(`Dòng ${index + 1}: ${error instanceof Error ? error.message : 'Khoản mua không hợp lệ.'}`); }
+          continue;
+        }
+        // Credit application replaces the draft buckets; always use the current ones.
+        const buckets = payload.tx as Record<string, Record<string, unknown>[]>;
         const wallet = snapshot.wallets.find(w => w.id === entry.wallet);
         if (entry.type !== 'expense' || !wallet || !Number.isSafeInteger(entry.amount) || entry.amount <= 0 || entry.amount > 1e12 || !/^\d{4}-\d{2}-\d{2}$/.test(entry.date) || !Number.isFinite(Date.parse(entry.date)) || new Date(entry.date).toISOString().slice(0, 10) !== entry.date || entry.date > localDate() || (wallet.openingDate && entry.date < wallet.openingDate) || entry.note.length > 200 || (entry.category !== undefined && !categories.includes(entry.category))) throw new CloudError(`Dòng ${index + 1}: kiểm tra số tiền, ví, ngày, danh mục và ghi chú.`);
         (buckets[entry.date.slice(0, 7)] ||= []).push({ id: crypto.randomUUID(), type: 'expense', date: entry.date, wallet: entry.wallet, amount: entry.amount, category: entry.category || 'Khác', note: entry.note.trim(), to: '' });

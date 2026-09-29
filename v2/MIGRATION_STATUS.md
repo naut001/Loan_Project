@@ -5,17 +5,17 @@ This is a partial migration, not a production replacement for v1.3.
 Implemented in the current preview: conditional cloud writes, full-payload backup export,
 wallet create/edit/delete, ordinary transaction create/edit/delete and transfers,
 category selection, monthly budgets, monthly CSV, and atomic cash-expense batches.
-Cash batches do not yet include credit purchases. Linked debt transactions cannot
+Expense batches support mixed cash and credit purchases. Linked debt transactions cannot
 be edited or deleted with the ordinary cash editor.
 Partial/full payments into custom monthly schedule rows are implemented with atomic
 wallet/debt updates, separate extra interest/fees, and confirmation. Linked payment undo
 is implemented with atomic updates, validation, and preservation of legacy paid markers.
 Individual credit purchases and undo are implemented: statement-period selection,
 linked schedule rows, no cash deduction, and protection against undoing paid purchases.
-Mixed cash/credit batches remain pending.
+Mixed batches validate all 1–100 entries on a draft before one conditional write.
 
 Still required before switching the main site:
-- Debt CRUD, mixed cash/credit batches, schedule conversion.
+- Debt CRUD, schedule conversion.
 - Receivable CRUD and collection history/undo.
 - Full planning/calculator/report parity and ICS export.
 - Full backup restoration and local persistence/synchronization.
