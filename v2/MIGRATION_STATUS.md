@@ -21,9 +21,12 @@ Conversion has no reverse action; export a backup first and reconcile with the l
 Basic debt management supports creating empty custom debts, renaming existing debts,
 editing due-date settings only without balances/history, and deleting empty debts only.
 Existing schedules, paid markers, transaction links and extension fields are retained.
+Individual monthly schedule rows can be added, edited or deleted without cash or
+expense transactions. Paid/partially paid and transaction-linked rows are protected;
+duplicate row IDs and orphan links block edits. Totals are recalculated atomically.
 
 Still required before switching the main site:
-- Full debt CRUD: formula creation/editing and direct monthly schedule editing.
+- Full debt CRUD: formula creation/editing.
 - Receivable CRUD and collection history/undo.
 - Full planning/calculator/report parity and ICS export.
 - Full backup restoration and local persistence/synchronization.

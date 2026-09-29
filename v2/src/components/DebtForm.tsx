@@ -26,7 +26,7 @@ export function DebtForm({ debts, disabled, onSave }: { debts: Debt[]; disabled:
         <label>Cách tính hạn<select value={dueMode} onChange={e => setDueMode(e.target.value as 'day' | 'after')}><option value="day">Ngày cố định</option><option value="after">Sau ngày sao kê</option></select></label>
         <label>Số ngày sau sao kê<input required type="number" min="0" max="60" step="1" value={grace} onChange={e => setGrace(e.target.value)} /></label>
       </div>
-      <p className="footnote">Khoản mới có dư nợ 0; dùng mua tín dụng để thêm kỳ nợ. Khoản có số dư hoặc lịch sử chỉ đổi tên. Chỉ xoá khoản trống; không thay đổi ví.</p>
+      <p className="footnote">Khoản mới có dư nợ 0; nhập lịch có sẵn bằng chỉnh lịch trả, hoặc dùng mua tín dụng cho chi tiêu mới. Khoản có số dư hoặc lịch sử chỉ đổi tên. Chỉ xoá khoản trống; không thay đổi ví.</p>
       <Button type="submit">{id ? 'Lưu thông tin khoản nợ' : 'Tạo khoản nợ'}</Button>
       {id && <Button type="button" variant="outline" onClick={() => void onSave(undefined, id)}>Xoá khoản nợ trống</Button>}
     </fieldset>

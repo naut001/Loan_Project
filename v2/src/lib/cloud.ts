@@ -2,6 +2,7 @@ import { isCashEditable, parseSnapshot, type Snapshot } from './snapshot';
 import { localDate } from './format';
 import { categories } from './budget';
 import { convertFormula } from './conversion';
+import { editSchedule, type ScheduleEdit } from './schedule-edit';
 import { editDebt, type DebtDetails } from './debt-edit';
 import { applyCreditPurchase, undoCreditPurchase, type CreditPurchase } from './credit';
 import { applyDebtPayment, undoDebtPayment, type DebtPayment } from './payment';
@@ -124,6 +125,12 @@ export function createCloudClient(url: string, key: string, request: typeof fetc
       if (!session || !loaded || saving) throw new CloudError('Hãy tải lại dữ liệu tài khoản trước khi lưu.');
       const payload = structuredClone(loaded.payload);
       convertFormula(payload, id);
+      return commit(payload, signal);
+    },
+    async saveSchedule(entry: ScheduleEdit, signal?: AbortSignal): Promise<Snapshot> {
+      if (!session || !loaded || saving) throw new CloudError('Hãy tải lại dữ liệu tài khoản trước khi lưu.');
+      const payload = structuredClone(loaded.payload);
+      editSchedule(payload, entry);
       return commit(payload, signal);
     },
     async saveDebt(values: DebtDetails | undefined, id?: string, signal?: AbortSignal): Promise<Snapshot> {

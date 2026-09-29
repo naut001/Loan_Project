@@ -7,6 +7,8 @@ import { PaymentForm } from './PaymentForm';
 import type { DebtPayment } from '../lib/payment';
 import { WalletForm } from './WalletForm';
 import { DebtForm } from './DebtForm';
+import { ScheduleForm } from './ScheduleForm';
+import type { ScheduleEdit } from '../lib/schedule-edit';
 import type { DebtDetails } from '../lib/debt-edit';
 import { BudgetForm } from './BudgetForm';
 import { categories } from '../lib/budget';
@@ -101,6 +103,21 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
     } catch (error) {
       if (!controller.signal.aborted && error instanceof CloudError && (error.status === 401 || error.status === 403)) { setAccount(''); setWallets([]); onDisconnect(); }
       if (!controller.signal.aborted) setMessage(`${error instanceof Error ? error.message : 'Lưu thất bại.'} Tải lại và kiểm tra lịch sử trước khi thử lại; nếu mất mạng, giao dịch có thể đã được lưu.`);
+    } finally { if (pending.current === controller) { pending.current = null; setBusy(false); } }
+  };
+  const saveSchedule = async (entry: ScheduleEdit) => {
+    if (pending.current || !client.current?.canSave()) return;
+    if (!window.confirm('Lưu thay đổi lịch trả? Dư nợ sẽ được tính lại; không trừ ví hoặc ghi chi tiêu. Hãy đối chiếu với lịch ngân hàng.')) return;
+    const controller = new AbortController(); pending.current = controller; setBusy(true);
+    try {
+      const data = await client.current.saveSchedule(entry, controller.signal);
+      if (controller.signal.aborted) return;
+      setDebts(data.debts); onLoad(data, `Tài khoản ${account} · đã sửa lịch trả`);
+      setMessage(client.current.canSave() ? 'Đã lưu lịch trả.' : 'Tải lại kiểm tra trước khi tiếp tục.');
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      if (error instanceof CloudError && (error.status === 401 || error.status === 403)) { setAccount(''); onDisconnect(); }
+      setMessage(error instanceof Error ? error.message : 'Không lưu được lịch. Tải lại kiểm tra trước khi thử lại.');
     } finally { if (pending.current === controller) { pending.current = null; setBusy(false); } }
   };
   const saveDebt = async (values: DebtDetails | undefined, id?: string) => {
@@ -264,6 +281,7 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
       {account && <CreditForm key={`${account}:${JSON.stringify(debts)}`} data={{ debts, wallets, tx: transactions }} disabled={busy || !client.current?.canSave()} onSave={saveCredit} />}
       {account && <BudgetForm data={{ wallets, tx: transactions, debts: [], budgets }} disabled={busy || !client.current?.canSave()} onSave={saveBudget} />}
       {account && <DebtForm key={`${account}:${JSON.stringify(debts)}`} debts={debts} disabled={busy || !client.current?.canSave()} onSave={saveDebt} />}
+      {account && <ScheduleForm key={`${account}:${JSON.stringify(debts)}`} debts={debts} disabled={busy || !client.current?.canSave()} onSave={saveSchedule} />}
       {account && <Button variant="outline" disabled={busy || !client.current?.canSave()} onClick={exportBackup}>Tải sao lưu đầy đủ từ tài khoản</Button>}
       {account && debts.filter(d => d.mode === 'formula').map(d => <Button key={d.id} variant="outline" disabled={busy || !client.current?.canSave()} onClick={() => void convertDebt(d.id)}>Chuyển sang lịch tháng: {d.name}</Button>)}
       {message && <p className="footnote" role="status">{message}</p>}
