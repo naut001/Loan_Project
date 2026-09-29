@@ -23,6 +23,9 @@ jobs:
         with:
           node-version: 22
       - run: node tests/run.js
+      - run: npm --prefix v2 ci
+      - run: npm --prefix v2 test
+      - run: npm --prefix v2 run build
 
   deploy:
     needs: test
@@ -36,11 +39,18 @@ jobs:
         with:
           node-version: 22
       - uses: actions/configure-pages@v5
+      - run: npm --prefix v2 ci
+      - name: Build giao diện 2.0 với cấu hình công khai
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: npm --prefix v2 run build
 
       - name: Gom các file của trang
         run: |
           mkdir _site
           cp -r index.html sw.js manifest.webmanifest css js icons _site/
+          cp -r v2/dist _site/v2
 
       - name: Điền cấu hình Supabase từ Secrets
         env:

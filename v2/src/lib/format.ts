@@ -1,0 +1,3 @@
+export const money = (n: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n);
+export const labels = { income: 'Thu nhập', expense: 'Chi tiêu', credit: 'Mua tín dụng', repayment: 'Thanh toán nợ', transfer: 'Chuyển tài khoản' };
+export const localDate = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };

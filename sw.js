@@ -1,5 +1,5 @@
 /* Service worker: ưu tiên mạng, có bản lưu để dùng khi ngoại tuyến. Đổi VERSION khi thay danh sách file. */
-const VERSION = 'so-tra-no-v1.3.0';
+const VERSION = 'so-tra-no-v1.3.0-preview2';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css',
   'js/util.js', 'js/loan.js', 'js/model.js', 'js/spend.js', 'js/exports.js', 'js/state.js', 'js/views/spend.js',
@@ -13,6 +13,8 @@ self.addEventListener('activate', e => {
 });
 self.addEventListener('fetch', e => {
   const req = e.request;
+  // The React preview manages its own assets; never return legacy HTML for it.
+  if(new URL(req.url).pathname.startsWith(new URL('./v2/', self.location.href).pathname)) return;
   if(req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
   e.respondWith(fetch(req).then(res => {
     const copy = res.clone(); caches.open(VERSION).then(c => c.put(req, copy)); return res;
