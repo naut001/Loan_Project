@@ -1,0 +1,12 @@
+{
+  "name": "so-tra-no",
+  "version": "1.1.0",
+  "description": "Sổ trả nợ: theo dõi nợ, hạn trả, tiền phải thu và kế hoạch dòng tiền. Trang tĩnh, không cần build.",
+  "private": true,
+  "scripts": {
+    "test": "node tests/run.js",
+    "build:single": "node scripts/build-single.js",
+    "serve": "python3 -m http.server 8080"
+  },
+  "engines": { "node": ">=18" }
+}

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Sổ trả nợ">
+  <rect width="512" height="512" rx="112" fill="#15302A"/>
+  <rect x="112" y="120" width="72" height="272" rx="14" fill="#D99A1E"/>
+  <rect x="220" y="196" width="72" height="196" rx="14" fill="#E8B04A"/>
+  <rect x="328" y="272" width="72" height="120" rx="14" fill="#F6E7C4"/>
+  <rect x="96" y="408" width="320" height="16" rx="8" fill="#EEF2EF" opacity=".55"/>
+</svg>
