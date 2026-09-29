@@ -1,11 +1,13 @@
 import { isCashEditable, parseSnapshot, type Snapshot } from './snapshot';
 import { localDate } from './format';
+import { editPlan } from './plan';
 import { categories } from './budget';
 import { convertFormula } from './conversion';
 import { editSchedule, type ScheduleEdit } from './schedule-edit';
 import { editDebt, type DebtDetails } from './debt-edit';
 import { applyCreditPurchase, undoCreditPurchase, type CreditPurchase } from './credit';
 import { applyDebtPayment, undoDebtPayment, type DebtPayment } from './payment';
+import { editReceivable, collectReceivable, undoReceivable, type ReceivableDetails } from './receivable';
 
 export class CloudError extends Error {
   constructor(message: string, public status = 0) { super(message); }
@@ -89,6 +91,23 @@ export function createCloudClient(url: string, key: string, request: typeof fetc
       return snapshot;
     },
     canSave() { return !!session && !!loaded && !saving; },
+    async putPlan(plan: unknown, income: unknown, signal?: AbortSignal): Promise<Snapshot> {
+      if (!session || !loaded || saving) throw new CloudError('Hãy tải lại dữ liệu tài khoản trước khi lưu.');
+      const draft = structuredClone(loaded.payload);
+      editPlan(draft, plan, income);
+      return commit(draft, signal);
+    },
+    async restoreBackup(raw: string, signal?: AbortSignal): Promise<Snapshot> {
+      if (!session || !loaded || saving) throw new CloudError('Hãy tải lại dữ liệu tài khoản trước khi khôi phục.');
+      parseSnapshot(raw);
+      const parsed = JSON.parse(raw);
+      if (parsed?.app === 'so-tra-no' && parsed.version !== '1.3.0' && parsed.version !== '2.0.0-preview') throw new CloudError('Phiên bản sao lưu không được hỗ trợ.');
+      const draft = structuredClone(parsed.app === 'so-tra-no' ? parsed.data : parsed);
+      if (!draft || typeof draft !== 'object' || Array.isArray(draft)) throw new CloudError('Bản sao lưu không hợp lệ.');
+      // Revision belongs to the current cloud row, not to the imported backup.
+      draft.updatedAt = loaded.payload.updatedAt || 0;
+      return commit(draft, signal);
+    },
     exportBackup() {
       if (!session || !loaded || saving) throw new CloudError('Hãy tải lại dữ liệu trước khi xuất sao lưu.');
       return JSON.stringify({ app: 'so-tra-no', version: '2.0.0-preview', exportedAt: new Date().toISOString(), data: loaded.payload }, null, 2);
@@ -229,6 +248,24 @@ export function createCloudClient(url: string, key: string, request: typeof fetc
         if (!Object.keys(budgets[month]).length) delete budgets[month];
       }
       return commit(payload, signal);
+    },
+    async putReceivable(values: ReceivableDetails | undefined, id?: string, signal?: AbortSignal): Promise<Snapshot> {
+      if (!session || !loaded || saving) throw new CloudError('Hãy tải lại dữ liệu tài khoản trước khi lưu.');
+      const draft = structuredClone(loaded.payload);
+      editReceivable(draft, values, id);
+      return commit(draft, signal);
+    },
+    async collectReceivable(id: string, amount: number, signal?: AbortSignal): Promise<Snapshot> {
+      if (!session || !loaded || saving) throw new CloudError('Hãy tải lại dữ liệu tài khoản trước khi lưu.');
+      const draft = structuredClone(loaded.payload);
+      collectReceivable(draft, id, amount, localDate());
+      return commit(draft, signal);
+    },
+    async undoReceivable(id: string, signal?: AbortSignal): Promise<Snapshot> {
+      if (!session || !loaded || saving) throw new CloudError('Hãy tải lại dữ liệu tài khoản trước khi lưu.');
+      const draft = structuredClone(loaded.payload);
+      undoReceivable(draft, id);
+      return commit(draft, signal);
     },
     disconnect() { ++generation; session = null; loaded = null; },
   };

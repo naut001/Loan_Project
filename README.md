@@ -1,5 +1,13 @@
 # Sổ trả nợ
 
+> Trang chính GitHub Pages được cấu hình để chạy **v2** tại
+> `https://naut001.github.io/Loan_Project/` sau khi đưa thay đổi lên `main` và
+> GitHub Actions triển khai thành công. Hướng dẫn bên dưới dành cho bản **1.3**,
+> vẫn được giữ tại `https://naut001.github.io/Loan_Project/v1/` để khởi tạo tài khoản,
+> khôi phục mật khẩu, dùng ngoại tuyến và quay lại khi cần. Bản v2 phụ tại `/Loan_Project/v2/`.
+> Đừng chỉnh sửa cùng một tài khoản ở hai phiên bản đồng thời. Kiểm thử Supabase thật
+> chưa hoàn tất: xem `v2/TEST_RESULTS.md` và `v2/ACCEPTANCE_CHECKLIST.md`.
+
 Trang web tĩnh (HTML, CSS, JavaScript thuần, không cần build) để:
 
 - **Theo dõi khoản nợ**: thẻ tín dụng, vay tiêu dùng, SPayLater (mỗi tháng một số tiền khác nhau), có hạn mức, ngày sao kê và hạn trả.

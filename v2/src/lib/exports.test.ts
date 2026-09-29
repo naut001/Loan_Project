@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createContext, runInContext } from 'node:vm';
 import { expect, it } from 'vitest';
-import { csvCell, transactionsCSV } from './exports';
+import { csvCell, customDebtCalendar, debtCalendar, transactionsCSV } from './exports';
 import { parseSnapshot, type Snapshot } from './snapshot';
 
 const data: Snapshot = {
@@ -53,4 +53,65 @@ it('giữ mã nợ và kỳ qua parser tới CSV; chuyển ví không xuất dan
 });
 it('từ chối tháng không hợp lệ', () => {
   for (const month of ['', '2026-13', '2026-00', '../2026-09']) expect(() => transactionsCSV(month, data)).toThrow('Tháng');
+});
+
+it('xuất ICS chỉ cho lịch nhập tay, gộp tháng, bỏ kỳ đã trả và giữ kỳ quá hạn', () => {
+  const snapshot = parseSnapshot(JSON.stringify({ v: 1, wallets: [], tx: {}, debts: [
+    { id: 'custom', name: 'Khoản, cần trả', mode: 'custom', balance: 80, payment: 80, stmtDay: 0, dueDay: 10, dueMode: 'day', grace: 0, sched: [
+      { id: 'a', k: '2026-08', a: 30 }, { id: 'b', k: '2026-08', a: 20, settled: 10 }, { id: 'c', k: '2026-09', a: 50, p: '2026-09-01' },
+    ] },
+    { id: 'formula', name: 'Không tự suy diễn', mode: 'formula', balance: 100, payment: 10, stmtDay: 0, dueDay: 10, dueMode: 'day', grace: 0 },
+  ] }));
+  const ics = customDebtCalendar(snapshot, new Date(2026, 8, 29));
+  expect(ics).toContain('DTSTART;VALUE=DATE:20260810');
+  expect(ics).toContain('Dự kiến 40 đ');
+  expect(ics.match(/BEGIN:VEVENT/g)).toHaveLength(1);
+  expect(ics).not.toContain('20260910');
+  expect(ics).not.toContain('Không tự suy diễn');
+  expect(ics).toContain('\\,');
+  expect(ics).toContain('TRIGGER:-P1D');
+});
+
+it('ICS giữ ngày địa phương, kết thúc độc quyền và gấp dòng UTF-8 tối đa 75 byte', () => {
+  const source: Snapshot = { ...data, debts: [{ id: 'd', name: 'Nợ tiếng Việt;\\\n'.repeat(20), mode: 'custom', balance: 100, payment: 10, dueDay: 31, stmtDay: 0, dueMode: 'day', grace: 0, sched: [
+    { k: '2027-02', a: 20 }, { k: '2027-09', a: 80 },
+  ] }] };
+  const before = JSON.stringify(source);
+  const calendar = customDebtCalendar(source, new Date(2026, 8, 29));
+  expect(calendar).toContain('DTSTART;VALUE=DATE:20270228');
+  expect(calendar).toContain('DTEND;VALUE=DATE:20270301');
+  expect(calendar).not.toContain('20270930');
+  for (const line of calendar.split('\r\n')) expect(new TextEncoder().encode(line).length).toBeLessThanOrEqual(75);
+  expect(calendar.replace(/\r\n /g, '')).toContain('\\;\\\\\\n');
+  expect(JSON.stringify(source)).toBe(before);
+  expect(() => customDebtCalendar(source, new Date(NaN))).toThrow('Ngày');
+});
+
+it('ICS lịch nhập tay đối chiếu byte-for-byte với bản 1.3 ngoại trừ thời điểm xuất', () => {
+  const ctx = createContext({ __TODAY__: '2026-09-29' });
+  for (const file of ['util.js', 'loan.js', 'model.js', 'spend.js', 'exports.js']) {
+    runInContext(readFileSync(new URL(`../../../js/${file}`, import.meta.url), 'utf8'), ctx);
+  }
+  const snapshot = parseSnapshot(JSON.stringify({ v: 1, wallets: [], tx: {}, debts: [{
+    id: 'd', name: 'Nợ, nhà; thử', mode: 'custom', balance: 110, payment: 20, dueDay: 31, stmtDay: 0, dueMode: 'day', grace: 0,
+    sched: [{ k: '2026-08', a: 20 }, { k: '2026-08', a: 30, settled: 10 }, { k: '2027-02', a: 40 }, { k: '2027-09', a: 40 }],
+  }] }));
+  const legacy = runInContext(`debtCalendar(${JSON.stringify(snapshot)})`, ctx) as string;
+  const modern = customDebtCalendar(snapshot, new Date(2026, 8, 29));
+  const normalize = (ics: string) => ics.replace(/DTSTAMP:\d{8}T\d{6}Z/g, 'DTSTAMP:EXPORT-TIME');
+  expect(normalize(modern)).toBe(normalize(legacy));
+});
+
+it('ICS khoản công thức đối chiếu bản 1.3, gồm đã trả tháng này và sao kê chuyển tháng', () => {
+  const ctx = createContext({ __TODAY__: '2026-09-29' });
+  for (const file of ['util.js', 'loan.js', 'model.js', 'spend.js', 'exports.js']) runInContext(readFileSync(new URL(`../../../js/${file}`, import.meta.url), 'utf8'), ctx);
+  for (const paid of [{}, { '2026-09': '2026-09-01' }]) {
+    const snapshot = parseSnapshot(JSON.stringify({ v: 1, wallets: [], tx: {}, debts: [{
+      id: 'f', name: 'Vay nhà', mode: 'formula', balance: 1000000, payment: 100000, rate: 12, paid,
+      dueDay: 10, stmtDay: 27, dueMode: 'day', grace: 0,
+    }] }));
+    const legacy = runInContext(`debtCalendar(${JSON.stringify(snapshot)})`, ctx) as string;
+    const modern = debtCalendar(snapshot, new Date(2026, 8, 29));
+    expect(modern.replace(/DTSTAMP:\d{8}T\d{6}Z/g, 'STAMP')).toBe(legacy.replace(/DTSTAMP:\d{8}T\d{6}Z/g, 'STAMP'));
+  }
 });

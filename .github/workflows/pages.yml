@@ -26,6 +26,7 @@ jobs:
       - run: npm --prefix v2 ci
       - run: npm --prefix v2 test
       - run: npm --prefix v2 run build
+      - run: node scripts/verify-pages.js v2/dist --build
 
   deploy:
     needs: test
@@ -44,19 +45,30 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           VITE_SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: npm --prefix v2 run build
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_KEY" ]; then
+            echo '::error::Thiếu SUPABASE_URL hoặc SUPABASE_KEY; không đăng bản chính thiếu đăng nhập.'
+            exit 1
+          fi
+          npm --prefix v2 run build
 
       - name: Gom các file của trang
         run: |
           mkdir _site
-          cp -r index.html sw.js manifest.webmanifest css js icons _site/
+          mkdir _site/v1
+          cp -r index.html sw.js manifest.webmanifest css js icons _site/v1/
+          cp scripts/retire-sw.js _site/sw.js
+          cp -r v2/dist/. _site/
           cp -r v2/dist _site/v2
 
       - name: Điền cấu hình Supabase từ Secrets
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: node scripts/inject-config.js _site
+        run: node scripts/inject-config.js _site/v1
+
+      - name: Kiểm tra gói Pages trước khi đăng
+        run: node scripts/verify-pages.js _site
 
       - uses: actions/upload-pages-artifact@v3
         with:

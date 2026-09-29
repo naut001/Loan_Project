@@ -1,0 +1,34 @@
+import { useState } from 'react';
+import { calculateLoan, type LoanInput } from '../lib/loan';
+import { money } from '../lib/format';
+import { proposeLoan, type LoanProposal } from '../lib/plan';
+import { compareConsolidation } from '../lib/consolidation';
+import type { Debt } from '../lib/debt';
+import { Button } from './ui/button';
+
+const defaults: LoanInput = { amount: 100000000, rate: 17.99, months: 24, upfront: 0, prepay: 4, payoffAt: 12 };
+const fields: [keyof LoanInput, string][] = [['amount', 'Số tiền vay (đ)'], ['rate', 'Lãi suất %/năm'], ['months', 'Kỳ hạn (tháng)'], ['upfront', 'Phí hồ sơ + bảo hiểm (đ)'], ['prepay', 'Phí trả trước hạn (%)'], ['payoffAt', 'Tất toán sau kỳ']];
+// A new snapshot can reuse an ID; do not carry its predecessor's selection forward.
+export const selectedConsolidationDebts = (debts: Debt[], selected: Debt[]) => debts.filter(d => d.balance > 0 && selected.includes(d));
+export function CalculatorPage({ onPropose, debts = [] }: { onPropose?: (proposal: LoanProposal) => void; debts?: Debt[] }) {
+  const [values, setValues] = useState(Object.fromEntries(fields.map(([key]) => [key, String(defaults[key])])) as Record<keyof LoanInput, string>);
+  const [selected, setSelected] = useState<Debt[]>([]);
+  let result: ReturnType<typeof calculateLoan> | undefined, error = '', input: LoanInput | undefined;
+  try {
+    if (Object.values(values).some(value => !value.trim())) throw new Error('Nhập đầy đủ các thông số; phí không có thì nhập 0.');
+    input = Object.fromEntries(fields.map(([key]) => [key, Number(values[key].replace(',', '.'))])) as unknown as LoanInput;
+    result = calculateLoan(input);
+  } catch (e) { error = e instanceof Error ? e.message : 'Không tính được khoản vay.'; }
+  const active = debts.filter(d => d.balance > 0);
+  const chosen = selectedConsolidationDebts(debts, selected);
+  let comparison: ReturnType<typeof compareConsolidation> | undefined, compareError = '';
+  if (result && input && chosen.length) try { comparison = compareConsolidation(input, chosen); }
+  catch (e) { compareError = e instanceof Error ? e.message : 'Không so sánh được khoản nợ.'; }
+  return <div className="reports-page"><section className="panel"><h2>Tính khoản vay</h2><p className="footnote">Mô phỏng độc lập; không ghi khoản nợ, giải ngân hay giao dịch tiền. Các thông số chỉ giữ trong màn hình hiện tại.</p><div className="filters">{fields.map(([key, label]) => <label key={key}>{label}<input inputMode={key === 'rate' || key === 'prepay' ? 'decimal' : 'numeric'} value={values[key]} onChange={e => setValues({ ...values, [key]: e.target.value })} /></label>)}</div>{error && <p role="alert" className="error">{error}</p>}</section>
+    {result && <><section className="panel"><h2>Kết quả ước tính</h2>{([['Trả mỗi tháng', result.payment], ['Tổng lãi', result.totalInterest], ['Tổng chi phí (lãi + phí ban đầu)', result.fullCost]] as const).map(([name, value]) => <div className="report-line" key={name}><strong>{name}</strong><span>{money(value)}</span></div>)}<p>Lãi hiệu dụng/năm: {result.effectiveRate.toFixed(2)}%{result.feeRate !== null ? ` · Tính cả phí: ${result.feeRate.toFixed(2)}% danh nghĩa/năm` : ''}</p></section>
+    <section className="panel"><h2>Thử tất toán sớm sau kỳ {result.payoffAt}</h2><div className="report-line"><strong>Dư nợ còn lại</strong><span>{money(result.balance)}</span></div><div className="report-line"><strong>Phí tất toán</strong><span>{money(result.fee)}</span></div><div className="report-line"><strong>Cần chuẩn bị</strong><span>{money(result.balance + result.fee)}</span></div><p>{result.saving > 0 ? 'Tiết kiệm' : 'Tốn thêm'} {money(Math.abs(result.saving))} so với trả đủ kỳ.</p><p className="footnote">{result.lastGood ? `Trả sớm còn có lợi muộn nhất sau kỳ ${result.lastGood}.` : 'Với mức phí này, trả sớm không có lợi ở kỳ nào.'} Đối chiếu hợp đồng và số tất toán thực tế với ngân hàng.</p></section>
+    <section className="panel"><h2>So sánh gộp nợ</h2><p className="footnote">Chọn nợ đang có từ bản chụp hoặc tài khoản đã tải. Chỉ mô phỏng tất toán ngay; không sửa dữ liệu nợ hoặc tự chuyển lựa chọn sang kế hoạch. Số tất toán và phí thực tế cần đối chiếu với bên cho vay.</p>{active.length ? active.map(d => <label className="check" key={d.id}><input type="checkbox" checked={selected.includes(d)} onChange={e => setSelected(current => e.target.checked ? [...current, d] : current.filter(item => item !== d))} /> {d.name} · dư nợ {money(d.balance)}</label>) : <p>Chưa có khoản nợ đang trả để so sánh. Mở bản sao lưu hoặc tải tài khoản cloud.</p>}{compareError && <p role="alert" className="error">{compareError}</p>}{comparison && <><div className="report-line"><strong>Giữ nguyên · trả/tháng</strong><span>{money(comparison.oldMonthly)}</span></div><div className="report-line"><strong>Giữ nguyên · chi phí còn lại</strong><span>{comparison.oldCost === null ? 'Chưa xác định (thiếu gốc nợ nhập tay)' : money(comparison.oldCost)}</span></div><div className="report-line"><strong>Gộp nợ · trả/tháng</strong><span>{money(comparison.newMonthly)}</span></div><div className="report-line"><strong>Gộp nợ · lãi + phí mới và phí tất toán cũ</strong><span>{money(comparison.newCost)}</span></div><p>Cần tất toán {money(comparison.needed)} (gốc {money(comparison.payoff)}, phí nợ cũ {money(comparison.oldFee)}); vay ròng sau phí ban đầu {money(input!.amount - input!.upfront)}.</p>{comparison.shortfall > 0 ? <p role="status" className="error">Khoản vay chưa đủ tất toán: thiếu {money(comparison.shortfall)}. Không kết luận tiết kiệm.</p> : <>{comparison.shortfall < -1000000 && <p role="status">Vay dư {money(-comparison.shortfall)} so với số cần tất toán; phần dư vẫn chịu lãi.</p>}{comparison.saving !== null && <p role="status">{comparison.saving > 0 ? 'Ước tính tiết kiệm' : 'Ước tính tốn thêm'} {money(Math.abs(comparison.saving))} so với giữ nguyên các khoản đã chọn.</p>}</>}</>}</section>
+    <section className="panel"><details><summary>Lịch trả chi tiết · {result.months} kỳ</summary>{result.rows.map(row => <div className="report-line" key={row.k}><strong>Kỳ {row.k}: {money(row.pay)}</strong><span>Gốc {money(row.prin)} · Lãi {money(row.i)} · Còn {money(row.bal)}</span></div>)}</details></section>
+    {onPropose && <section className="panel"><h2>Chuyển sang kế hoạch</h2><p className="footnote">Chỉ chuyển số tiền, lãi suất, kỳ hạn và phí ban đầu vào bản nháp trong bộ nhớ. Không chuyển giả định tất toán sớm hay các nợ chọn để so sánh; chưa ghi cloud, nợ thật hoặc giao dịch. Mở tài khoản Supabase và chọn nhập đề xuất trong biểu mẫu kế hoạch để rà lại trước khi lưu.</p><Button type="button" disabled={input!.months > 120} onClick={() => onPropose(proposeLoan(input!))}>Đề xuất vào kế hoạch</Button>{input!.months > 120 && <p role="status">Kế hoạch chỉ hỗ trợ tối đa 120 tháng.</p>}</section>}</>}
+  </div>;
+}

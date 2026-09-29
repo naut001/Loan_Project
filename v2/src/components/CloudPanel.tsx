@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CloudError, createCloudClient, type WalletEntry, type BatchEntry } from '../lib/cloud';
 import { BatchForm } from './BatchForm';
+import { PlanForm } from './PlanForm';
 import { CreditForm } from './CreditForm';
 import type { CreditPurchase } from '../lib/credit';
 import { PaymentForm } from './PaymentForm';
@@ -8,15 +9,17 @@ import type { DebtPayment } from '../lib/payment';
 import { WalletForm } from './WalletForm';
 import { DebtForm } from './DebtForm';
 import { ScheduleForm } from './ScheduleForm';
+import { ReceivableForm, type ReceivableAction } from './ReceivableForm';
 import type { ScheduleEdit } from '../lib/schedule-edit';
 import type { DebtDetails } from '../lib/debt-edit';
 import { BudgetForm } from './BudgetForm';
 import { categories } from '../lib/budget';
-import { isCashEditable, type Snapshot } from '../lib/snapshot';
+import { isCashEditable, parseSnapshot, type Snapshot } from '../lib/snapshot';
 import { Button } from './ui/button';
 import { localDate } from '../lib/format';
+import type { LoanProposal } from '../lib/plan';
 
-export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot | null, source: string) => void; onDisconnect: () => void }) {
+export function CloudPanel({ onLoad, onDisconnect, proposal, onConsume }: { onLoad: (data: Snapshot | null, source: string) => void; onDisconnect: () => void; proposal?: LoanProposal | null; onConsume?: () => void }) {
   const url = (import.meta.env.VITE_SUPABASE_URL || '').trim();
   const key = (import.meta.env.VITE_SUPABASE_KEY || '').trim();
   const client = useRef<ReturnType<typeof createCloudClient> | null>(null);
@@ -39,6 +42,8 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
   const [editing, setEditing] = useState('');
   const [budgets, setBudgets] = useState<Snapshot['budgets']>({});
   const [debts, setDebts] = useState<Snapshot['debts']>([]);
+  const [recv, setRecv] = useState<unknown[]>([]);
+  const [planData, setPlanData] = useState<Snapshot | null>(null);
   const selectTransaction = (id: string) => {
     setEditing(id);
     const item = Object.values(transactions).flat().find(t => t.id === id);
@@ -54,6 +59,8 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
     setTransactions({}); setEditing('');
     setBudgets({});
     setDebts([]);
+    setRecv([]);
+    setPlanData(null);
     setCategory('');
     pending.current?.abort(); pending.current = null;
     client.current?.disconnect(); setAccount(''); setPassword(''); setBusy(false); setWallets([]); setAmount(''); setNote('');
@@ -78,8 +85,10 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
       setTransactions(data?.tx || {}); setEditing(''); setAmount(''); setNote('');
       setBudgets(data?.budgets || {});
       setDebts(data?.debts || []);
+      setRecv(data?.recv || []);
+      setPlanData(data);
       setCategory('');
-      setMessage(data ? 'Đã tải dữ liệu. Chỉ ghi khi bạn bấm lưu giao dịch bên dưới.' : 'Tài khoản chưa có dữ liệu. Hãy khởi tạo trong bản 1.3 rồi tải lại.');
+      setMessage(data ? 'Đã tải dữ liệu. Chỉ ghi khi bạn bấm lưu giao dịch bên dưới.' : 'Tài khoản chưa có dữ liệu. Hãy khởi tạo tại /Loan_Project/v1/ bằng bản 1.3 rồi tải lại.');
     } catch (error) {
       if (controller.signal.aborted) return;
       if (error instanceof CloudError && (error.status === 401 || error.status === 403)) { setAccount(''); onDisconnect(); }
@@ -222,6 +231,21 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
       setMessage(`${error instanceof Error ? error.message : 'Không lưu được ngân sách.'} Tải lại để kiểm tra trước khi thử lại.`);
     } finally { if (pending.current === controller) { pending.current = null; setBusy(false); } }
   };
+  const saveReceivable = async (action: ReceivableAction) => {
+    if (pending.current || !client.current?.canSave()) return;
+    if (!window.confirm(action.type === 'collect' ? 'Ghi nhận thu hồi? Không tự cộng vào ví.' : action.type === 'undo' ? 'Hoàn tác lần thu gần nhất? Không thay đổi ví.' : action.type === 'delete' ? 'Xoá khoản phải thu chưa có lịch sử?' : 'Lưu khoản phải thu? Không phát sinh giao dịch tiền.')) return;
+    const controller = new AbortController(); pending.current = controller; setBusy(true);
+    try {
+      const data = action.type === 'save' ? await client.current.putReceivable(action.values, action.id, controller.signal) : action.type === 'delete' ? await client.current.putReceivable(undefined, action.id, controller.signal) : action.type === 'collect' ? await client.current.collectReceivable(action.id, action.amount, controller.signal) : await client.current.undoReceivable(action.id, controller.signal);
+      if (controller.signal.aborted) return;
+      setRecv(data.recv || []); onLoad(data, `Tài khoản ${account} · đã lưu phải thu`);
+      setMessage(client.current.canSave() ? 'Đã lưu phải thu. Ví và giao dịch không thay đổi; không ghi lại ở bản 1.3.' : 'Tải lại và kiểm tra trước khi tiếp tục.');
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      if (error instanceof CloudError && (error.status === 401 || error.status === 403)) { setAccount(''); onDisconnect(); }
+      setMessage(`${error instanceof Error ? error.message : 'Không lưu được phải thu.'} Nếu đã gửi yêu cầu, tải lại kiểm tra trước khi thử lại.`);
+    } finally { if (pending.current === controller) { pending.current = null; setBusy(false); } }
+  };
   const exportBackup = () => {
     try {
       if (!client.current) return;
@@ -254,6 +278,33 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
       setMessage(`${error instanceof Error ? error.message : 'Không lưu được tài khoản.'} Nếu đã gửi yêu cầu, tải lại và kiểm tra trước khi thử lại.`);
     } finally { if (pending.current === controller) { pending.current = null; setBusy(false); } }
   };
+  const savePlan = async (plan: unknown, income: number) => {
+    if (pending.current || !client.current?.canSave()) return;
+    if (!window.confirm('Lưu giả định kế hoạch và lương vào tài khoản cloud? Không ghi giao dịch tiền hoặc thay đổi nợ thật.')) return;
+    const controller = new AbortController(); pending.current = controller; setBusy(true);
+    try {
+      const data = await client.current.putPlan(plan, income, controller.signal);
+      if (controller.signal.aborted) return;
+      setPlanData(data); onLoad(data, `Tài khoản ${account} · đã lưu kế hoạch`); setMessage('Đã lưu kế hoạch.');
+    } catch (error) { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : 'Không lưu được kế hoạch.'); }
+    finally { if (pending.current === controller) { pending.current = null; setBusy(false); } }
+  };
+  const restore = async (file: File) => {
+    if (pending.current || !client.current?.canSave()) return;
+    const controller = new AbortController(); pending.current = controller; setBusy(true);
+    try {
+      if (file.size > 950000) throw new Error('Tệp vượt giới hạn 950 KB.');
+      const raw = await file.text();
+      if (controller.signal.aborted) return;
+      const preview = parseSnapshot(raw);
+      if (!window.confirm(`Thay toàn bộ dữ liệu cloud của ${account} bằng ${file.name} (${preview.wallets.length} ví, ${preview.debts.length} nợ)? Đã tải sao lưu hiện tại chưa? Thao tác không tự gộp dữ liệu và không tự hoàn tác.`)) return;
+      const data = await client.current!.restoreBackup(raw, controller.signal);
+      if (controller.signal.aborted) return;
+      setPlanData(data); setWallets(data.wallets); setTransactions(data.tx); setDebts(data.debts); setRecv(data.recv || []); setBudgets(data.budgets || {}); setEditing('');
+      onLoad(data, `Tài khoản ${account} · đã khôi phục`); setMessage('Đã khôi phục. Đối chiếu số liệu và tải lại trước khi tiếp tục.');
+    } catch (error) { if (!controller.signal.aborted) setMessage(`${error instanceof Error ? error.message : 'Không khôi phục được.'} Nếu đã gửi yêu cầu, tải lại kiểm tra; không thử lại tự động.`); }
+    finally { if (pending.current === controller) { pending.current = null; setBusy(false); } }
+  };
   return <section className="panel cloud-panel" aria-label="Tài khoản Supabase">
     <h2>Dữ liệu từ tài khoản</h2>
     {!url || !key ? <p className="footnote">Chưa cấu hình Supabase cho bản 2.0. Bạn vẫn có thể mở JSON. Cấu hình URL và khoá publishable/anon trong tệp môi trường theo hướng dẫn.</p> : <>
@@ -282,7 +333,10 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
       {account && <BudgetForm data={{ wallets, tx: transactions, debts: [], budgets }} disabled={busy || !client.current?.canSave()} onSave={saveBudget} />}
       {account && <DebtForm key={`${account}:${JSON.stringify(debts)}`} debts={debts} disabled={busy || !client.current?.canSave()} onSave={saveDebt} />}
       {account && <ScheduleForm key={`${account}:${JSON.stringify(debts)}`} debts={debts} disabled={busy || !client.current?.canSave()} onSave={saveSchedule} />}
+      {account && <ReceivableForm key={`${account}:${JSON.stringify(recv)}`} recv={recv} disabled={busy || !client.current?.canSave()} onSave={saveReceivable} />}
       {account && <Button variant="outline" disabled={busy || !client.current?.canSave()} onClick={exportBackup}>Tải sao lưu đầy đủ từ tài khoản</Button>}
+      {account && planData && <PlanForm key={`${account}:${JSON.stringify(planData.plan)}:${String(planData.income)}`} data={planData} disabled={busy || !client.current?.canSave()} onSave={savePlan} proposal={proposal} onConsume={onConsume} />}
+      {account && <label>Khôi phục toàn bộ cloud từ sao lưu JSON (xuất sao lưu hiện tại trước)<input type="file" accept=".json,application/json" disabled={busy || !client.current?.canSave()} onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void restore(file); }} /></label>}
       {account && debts.filter(d => d.mode === 'formula').map(d => <Button key={d.id} variant="outline" disabled={busy || !client.current?.canSave()} onClick={() => void convertDebt(d.id)}>Chuyển sang lịch tháng: {d.name}</Button>)}
       {message && <p className="footnote" role="status">{message}</p>}
     </>}

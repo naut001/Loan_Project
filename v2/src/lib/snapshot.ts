@@ -1,12 +1,13 @@
 import type { Debt } from './debt';
 export interface Wallet { id: string; name: string; opening: number; openingDate?: string; type?: string }
+export interface Receivable { id: string; name: string; amount: number; got: number; kind: 'once' | 'plan'; due: string; startK: string; day: number; per: number; inc: boolean; note: string; log: { d: string; a: number }[]; [key: string]: unknown }
 export interface Transaction {
   id: string; date: string; type: 'income' | 'expense' | 'transfer' | 'credit' | 'repayment';
   amount: number; wallet: string; to?: string; note?: string; category?: string;
   interest?: number; fee?: number;
   debt?: string; row?: string;
 }
-export interface Snapshot { wallets: Wallet[]; tx: Record<string, Transaction[]>; debts: Debt[]; budgets?: Record<string, Record<string, number>> }
+export interface Snapshot { wallets: Wallet[]; tx: Record<string, Transaction[]>; debts: Debt[]; budgets?: Record<string, Record<string, number>>; recv?: unknown[]; plan?: unknown; income?: unknown }
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const amount = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0;
 const text = (value: unknown): value is string => typeof value === 'string';
@@ -41,7 +42,7 @@ export function parseSnapshot(raw: string): Snapshot {
     }
   }
   if (data.budgets !== undefined && (!object(data.budgets) || !Object.entries(data.budgets).every(([month, values]) => monthKey(month) && object(values) && Object.values(values).every(amount)))) throw new Error('Ngân sách không hợp lệ. Dữ liệu gốc được giữ nguyên.');
-  return { wallets, tx: data.tx, debts: data.debts, ...(data.budgets === undefined ? {} : { budgets: data.budgets }) } as Snapshot;
+  return { wallets, tx: data.tx, debts: data.debts, ...(data.budgets === undefined ? {} : { budgets: data.budgets }), ...(data.recv === undefined ? {} : { recv: data.recv }), ...(data.plan === undefined ? {} : { plan: data.plan }), ...(data.income === undefined ? {} : { income: data.income }) } as Snapshot;
 }
 
 export function summarize(data: Snapshot, date: string) {

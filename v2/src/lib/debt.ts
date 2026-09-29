@@ -2,6 +2,7 @@ export interface ScheduleRow { id?: string; k: string; a: number; p?: string | 0
 export interface Debt {
   id: string; name: string; kind?: string; mode: 'custom' | 'formula'; balance: number;
   payment: number; dueDay: number; stmtDay: number; dueMode: 'day' | 'after'; grace: number;
+  rate?: number; prepay?: number; principal?: number; paid?: Record<string, unknown>;
   sched?: ScheduleRow[];
 }
 export const remaining = (row: ScheduleRow) => row.p ? 0 : Math.max(0, row.a - (row.settled || 0));
