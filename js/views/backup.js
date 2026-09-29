@@ -3,7 +3,7 @@ function backupPanel(){
   const inCloud = typeof cloud!=='undefined' && cloud.ref;
   return `<h2>Dữ liệu và sao lưu</h2><div class="panel">
     <p class="small muted">${inCloud?'Dữ liệu được lưu trong tài khoản của bạn và bộ nhớ trình duyệt.':'Dữ liệu chỉ lưu trong trình duyệt này và không gửi đi đâu.'} Nên xuất file sao lưu thỉnh thoảng, và trước khi xoá dữ liệu trình duyệt hoặc đổi máy.</p>
-    <div class="btns"><button class="btn" data-act="backup-export">Xuất sao lưu</button><button class="btn" data-act="backup-import">Nhập từ sao lưu</button><button class="btn ghost danger" data-act="backup-reset">Xoá toàn bộ dữ liệu</button></div></div>
+    <div class="btns"><button class="btn" data-act="backup-export">Xuất sao lưu</button><button class="btn" data-act="backup-import">Nhập từ sao lưu</button><button class="btn" data-act="calendar-export">Xuất lịch nhắc .ics</button><button class="btn ghost danger" data-act="backup-reset">Xoá toàn bộ dữ liệu</button></div><p class="small muted">Lịch nhắc gồm kỳ chưa trả đã quá hạn và dự kiến trong 12 tháng tới. File lịch không tự cập nhật; cần kiểm tra thông báo trong ứng dụng lịch.</p></div>
     <p class="small muted" style="margin-top:16px">Sổ trả nợ v${APP_VERSION}. Công cụ tính toán tham khảo, không phải tư vấn tài chính.</p>`;
 }
 async function saveFile(name, text, mime){
@@ -18,7 +18,7 @@ function exportText(){ return JSON.stringify(exportPayload(), null, 2); }
 function exportDialog(){
   const n = S.debts.length, r = S.recv.length;
   $('#dlgForm').innerHTML = `<div class="dh">Xuất sao lưu</div><div class="db">
-    <p class="small muted">File gồm ${n} khoản nợ, ${r} khoản phải thu, kế hoạch tiền và quỹ dự phòng. Giữ file ở nơi an toàn vì nó chứa số liệu tài chính của bạn.</p>
+    <p class="small muted">File gồm ${n} khoản nợ, ${r} khoản phải thu, kế hoạch tiền, quỹ dự phòng, ví, giao dịch và ngân sách. Giữ file ở nơi an toàn vì nó chứa số liệu tài chính của bạn.</p>
     <div class="btns"><button type="button" class="btn primary" data-act="backup-download">Tải file .json</button><button type="button" class="btn" data-act="backup-copy">Sao chép nội dung</button></div>
     <label class="f" style="margin-top:12px">Nội dung sao lưu<textarea id="bk-text" rows="6" readonly>${esc(exportText())}</textarea></label></div>
     <div class="df"><button class="btn" value="close">Đóng</button></div>`;
@@ -34,7 +34,7 @@ function importDialog(){
   $('#dlg').showModal();
 }
 function resetDialog(){
-  $('#dlgForm').innerHTML = `<div class="dh">Xoá toàn bộ dữ liệu?</div><div class="db"><p>Toàn bộ khoản nợ, phải thu, kế hoạch và quỹ dự phòng trong trình duyệt này sẽ bị xoá và không khôi phục được. Hãy xuất sao lưu trước nếu cần.</p></div>
+  $('#dlgForm').innerHTML = `<div class="dh">Xoá toàn bộ dữ liệu?</div><div class="db"><p>Toàn bộ khoản nợ, phải thu, kế hoạch, quỹ dự phòng, ví, giao dịch và ngân sách sẽ bị xoá và không khôi phục được. Nếu đang đồng bộ, thay đổi cũng được lưu lên tài khoản. Hãy xuất sao lưu trước nếu cần.</p></div>
     <div class="df"><button class="btn ghost" value="cancel" formnovalidate>Huỷ</button><button class="btn danger" data-act="backup-reset-ok" value="del">Xoá tất cả</button></div>`;
   $('#dlg').showModal();
 }

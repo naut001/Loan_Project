@@ -31,7 +31,8 @@ function dueFromStmt(d,y,m){ // hạn trả của sao kê tạo ở tháng (y, m
 function rowDue(d,k){ const [y,m]=k.split('-').map(Number); return d.stmtDay>0 ? dueFromStmt(d,y,m-1) : dueOn(d,y,m-1); }
 const dueIdx = x => x.getFullYear()*12+x.getMonth();
 const kLabel = k => { const [y,m]=k.split('-'); return Number(m)+'/'+y; };
-const unpaidRows = d => (d.sched||[]).filter(r=>!r.p).sort((x,y)=>x.k<y.k?-1:x.k>y.k?1:0);
+const rowRemaining = r => r.p ? 0 : Math.max(0,r.a-(r.settled||0));
+const unpaidRows = d => (d.sched||[]).filter(r=>rowRemaining(r)>0).map(r=>({...r,a:rowRemaining(r)})).sort((x,y)=>x.k<y.k?-1:x.k>y.k?1:0);
 function recalc(d){
   if(!isCustom(d)) return d;
   const u=unpaidRows(d);
@@ -48,7 +49,7 @@ function monthlyOf(d, strict){
   if(!isCustom(d)) return d.payment;
   const ci = nowIdx();
   const rows=(d.sched||[]).filter(r=>dueIdx(rowDue(d,r.k))===ci);
-  if(rows.length) return rows.reduce((s,r)=>s+r.a,0);
+  if(rows.length) return rows.reduce((s,r)=>s+(strict?rowRemaining(r):r.a),0);
   return strict ? 0 : d.payment;
 }
 function remainingOf(d){
@@ -111,7 +112,12 @@ function projection(n){
 }
 
 const recvs = () => (S.recv = S.recv || []);
-const parseISO = s => { const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s||''); return m? new Date(+m[1],+m[2]-1,+m[3]) : null; };
+const parseISO = s => {
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s||'');
+  if(!m) return null;
+  const d=new Date(0); d.setHours(0,0,0,0); d.setFullYear(+m[1],+m[2]-1,+m[3]);
+  return dateKey(d)===s ? d : null;
+};
 const fmtD = d => d.getDate()+'/'+(d.getMonth()+1)+'/'+d.getFullYear();
 function recvInfo(r){
   const out=Math.max(0,(r.amount||0)-(r.got||0)); const info={out,next:null,nextAmt:0,late:0,lateSince:null,lateDays:0};

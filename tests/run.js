@@ -10,7 +10,7 @@ function test(name, fn){ try{ fn(); passed++; console.log('  ok   ' + name); } c
 /* ---------- môi trường giả lập cho phần tính toán ---------- */
 function makeCtx(todayISO, withState){
   const ctx = vm.createContext({ console, __TODAY__: todayISO + 'T00:00:00', document: {}, localStorage: { getItem: () => null, setItem: () => {} } });
-  ['js/util.js', 'js/loan.js', 'js/model.js'].forEach(f => vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f }));
+  ['js/util.js', 'js/loan.js', 'js/model.js', 'js/spend.js', 'js/exports.js'].forEach(f => vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f }));
   if (withState) vm.runInContext(fs.readFileSync(path.join(root, 'js/state.js'), 'utf8'), ctx, { filename: 'js/state.js' });
   else vm.runInContext('var S = {income:0, debts:[], recv:[], plan:{cash:[],living:0,buffer:0,incomePending:false,loans:[],buys:[]}, fund:{}, calc:{}};', ctx);
   return ctx;
@@ -168,6 +168,247 @@ test('mọi chữ hiển thị đều là tiếng Việt CÓ DẤU (không còn 
 test('không có khoá thật nào nằm trong mã nguồn', () => {
   const files = ['index.html', 'sw.js', 'README.md', 'sql/schema.sql']; (function walk(d){ fs.readdirSync(path.join(root, d), { withFileTypes: true }).forEach(e => e.isDirectory() ? walk(d + '/' + e.name) : files.push(d + '/' + e.name)); })('js');
   files.forEach(f => { const t = read(f); assert.ok(!/eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\./.test(t), f + ' chứa chuỗi giống JWT'); assert.ok(!/sb_(publishable|secret)_[A-Za-z0-9_-]{10,}/.test(t), f + ' chứa khoá Supabase'); assert.ok(!/[a-z0-9]{20}\.supabase\.co/.test(t), f + ' chứa URL dự án thật'); });
+});
+
+console.log('Thu chi, xuất dữ liệu và hồi quy');
+test('ngày hợp lệ, năm nhuận và ngày địa phương giả lập',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  assert.strictEqual(run(ctx,'todayStr()'),'2026-09-28');
+  assert.strictEqual(run(ctx,"parseISO('2026-02-29')"),null);
+  assert.strictEqual(run(ctx,"parseISO('2026-04-31')"),null);
+  assert.ok(run(ctx,"parseISO('2024-02-29')"));
+});
+test('sao lưu cũ thêm ví mặc định và không mất khoản nợ',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  const s=run(ctx,"sanitizeState({debts:[{id:'d',balance:100}],income:200})");
+  assert.strictEqual(s.debts[0].balance,100); assert.strictEqual(s.wallets[0].id,'cash');
+});
+test('thu, chi, chuyển ví tính đúng số dư và không cộng chuyển ví vào báo cáo',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  run(ctx,`S.wallets=[{id:'a',name:'A',opening:1000},{id:'b',name:'B',opening:0}];
+    putTransaction({id:'i',date:'2026-09-01',type:'income',amount:500,wallet:'a'});
+    putTransaction({id:'e',date:'2026-09-02',type:'expense',amount:200,wallet:'a'});
+    putTransaction({id:'t',date:'2026-09-03',type:'transfer',amount:300,wallet:'a',to:'b'});`);
+  assert.strictEqual(run(ctx,"walletBalance('a')"),1000); assert.strictEqual(run(ctx,"walletBalance('b')"),300);
+  assert.strictEqual(run(ctx,"spendSummary('2026-09').net"),300);
+  assert.throws(()=>run(ctx,"removeWallet('b')"));
+  run(ctx,"removeTransaction('t')"); assert.strictEqual(run(ctx,"walletBalance('a')"),1300);
+});
+test('sửa ngày giao dịch chuyển đúng tháng; giao dịch mới có id riêng',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  run(ctx,`putTransaction({id:'x',date:'2026-09-01',type:'expense',amount:20,wallet:'cash'});
+    putTransaction({id:'x',date:'2026-08-01',type:'expense',amount:30,wallet:'cash'});
+    putTransaction({date:'2026-09-01',type:'income',amount:10,wallet:'cash'});
+    putTransaction({date:'2026-09-02',type:'income',amount:10,wallet:'cash'});`);
+  assert.strictEqual(run(ctx,"monthTransactions('2026-08').length"),1);
+  assert.strictEqual(run(ctx,"monthTransactions('2026-09').length"),2);
+  assert.strictEqual(run(ctx,"new Set(allTransactions().map(t=>t.id)).size"),3);
+});
+test('giao dịch không hợp lệ không làm đổi trạng thái',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  for(const extra of ["date:'2026-09-29'","date:'2026-02-30'","amount:-1","amount:Infinity","wallet:'missing'","type:'transfer',to:'cash'"]){
+    assert.throws(()=>run(ctx,`putTransaction({date:'2026-09-01',type:'expense',amount:10,wallet:'cash',${extra}})`));
+  }
+  assert.strictEqual(run(ctx,'allTransactions().length'),0);
+});
+test('làm sạch giao dịch bẩn, giữ ví phục hồi và ngân sách',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  run(ctx,`S=sanitizeState({tx:{'2026-09':[
+    {id:'a',date:'2026-09-01',type:'expense',amount:20,wallet:'lost'},
+    {id:'a',date:'2026-09-01',type:'expense',amount:20,wallet:'lost'},
+    {date:'2026-02-30',type:'income',amount:10},
+    {date:'2026-08-01',type:'income',amount:10}]},budgets:{'2026-09':{'Ăn uống':100,'Lạ':30}}});`);
+  assert.strictEqual(run(ctx,'allTransactions().length'),1);
+  assert.strictEqual(run(ctx,"walletBalance('lost')"),-20);
+  assert.strictEqual(run(ctx,"S.budgets['2026-09']['Ăn uống']"),100);
+  assert.strictEqual(run(ctx,'JSON.stringify(sanitizeState(S))===JSON.stringify(S)'),true);
+});
+test('CSV có BOM, thoát dấu nháy và vô hiệu công thức bảng tính',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  assert.strictEqual(run(ctx,`csvCell('=1+1')`),'"\'=1+1"');
+  assert.strictEqual(run(ctx,`csvCell('a"b')`),'"a""b"');
+  assert.ok(run(ctx,"transactionsCSV('2026-09')").startsWith('\uFEFF'));
+});
+test('ICS có ngày kết thúc, gộp cùng kỳ, bỏ kỳ đã trả, gấp dòng UTF-8',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  run(ctx,`S=sanitizeState({debts:[{id:'d',name:'Nợ, dài; '+ 'ế'.repeat(90),mode:'custom',dueDay:30,sched:[{k:'2026-09',a:10},{k:'2026-09',a:20},{k:'2026-10',a:5,p:'2026-09-01'}]}]});`);
+  const text=run(ctx,'debtCalendar()');
+  assert.strictEqual((text.match(/BEGIN:VEVENT/g)||[]).length,1);
+  assert.ok(text.includes('DTEND;VALUE=DATE:20261001'));
+  assert.ok(text.replace(/\r\n /g,'').includes('30 đ'));
+  text.split('\r\n').forEach(line=>assert.ok(Buffer.byteLength(line)<=75));
+});
+test('nạp dữ liệu có sẵn theo thứ tự script thực tế không mất dữ liệu',()=>{
+  const ctx=vm.createContext({console,document:{},localStorage:{getItem:()=>'{"income":1234}',setItem(){}}});
+  for(const file of ['js/util.js','js/loan.js','js/model.js','js/spend.js','js/exports.js','js/state.js']) vm.runInContext(read(file),ctx);
+  assert.strictEqual(run(ctx,'S.income'),1234); assert.strictEqual(run(ctx,'stateLoadError'),false);
+});
+test('JSON hỏng chặn lưu và giữ nguyên bản gốc',()=>{
+  let writes=0; const ctx=vm.createContext({console,document:{},localStorage:{getItem:()=>'{broken',setItem(){writes++;}}});
+  for(const file of ['js/util.js','js/loan.js','js/model.js','js/spend.js','js/exports.js','js/state.js']) vm.runInContext(read(file),ctx);
+  run(ctx,"toast=()=>{}; save()");
+  assert.strictEqual(run(ctx,'stateLoadError'),true); assert.strictEqual(run(ctx,'unreadState'),'{broken'); assert.strictEqual(writes,0);
+});
+
+test('dựng hai tab mới và thoát HTML do người dùng nhập',()=>{
+  const ctx=makeCtx('2026-09-28',true), els={};
+  ctx.document.querySelector=selector=>els[selector]||(els[selector]={innerHTML:''});
+  vm.runInContext(read('js/views/spend.js'),ctx);
+  run(ctx,`S.wallets[0].name='<img src=x>'; putTransaction({date:'2026-09-01',type:'expense',amount:100,wallet:'cash',note:'<script>x</script>'}); renderSpend(); renderReports();`);
+  assert.ok(els['#v-spend'].innerHTML.includes('&lt;img src=x&gt;'));
+  assert.ok(!els['#v-spend'].innerHTML.includes('<script>'));
+  assert.ok(els['#v-reports'].innerHTML.includes('Xu hướng chi 6 tháng'));
+});
+test('click Đã trả hai lần không trừ dư nợ hai lần',()=>{
+  const ctx=makeCtx('2026-09-28',true), listeners={};
+  ctx.document.addEventListener=(name,fn)=>{listeners[name]=fn;};
+  ctx.document.querySelector=()=>({addEventListener(){}});
+  run(ctx,`var dlg=null,rdlg=null; function spendAction(){return false;} function backupAction(){return false;}
+    function renderAll(){} toast=()=>{};
+    S.debts=[cleanDebt({id:'d',balance:1000,payment:100,months:10,rate:0})];`);
+  vm.runInContext(read('js/events.js'),ctx);
+  const button={dataset:{act:'pay',id:'d'}};
+  const event={target:{closest:s=>s==='[data-act]'?button:null}};
+  listeners.click(event); listeners.click(event);
+  assert.strictEqual(run(ctx,'S.debts[0].balance'),900);
+  assert.strictEqual(run(ctx,"S.debts[0].paid['2026-09'].at"),'2026-09-28');
+});
+
+test('nhập cuối ngày lưu nguyên lô, không tính số dư đầu kỳ vào thu nhập',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  run(ctx,`putWallet({name:'Ngân hàng',type:'bank',opening:1000000,openingDate:'2026-09-28'},'cash');
+    putDailyExpenses('2026-09-28',[{amount:50000,wallet:'cash',category:'Ăn uống'},{amount:20000,wallet:'cash',category:'Đi lại'}]);`);
+  assert.strictEqual(run(ctx,"walletBalance('cash')"),930000);
+  assert.strictEqual(run(ctx,"spendSummary('2026-09').income"),0);
+  assert.strictEqual(run(ctx,"spendSummary('2026-09').expense"),70000);
+  const before=run(ctx,'JSON.stringify(S)');
+  assert.throws(()=>run(ctx,`putDailyExpenses('2026-09-28',[{amount:1,wallet:'cash'},{amount:0,wallet:'cash'}])`));
+  assert.strictEqual(run(ctx,'JSON.stringify(S)'),before);
+});
+test('mốc đầu kỳ chặn ghi lùi và chuyển tiền trước mốc của ví nhận',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  run(ctx,`S.wallets.push({id:'bank',name:'Ngân hàng',opening:100,type:'bank',openingDate:'2026-09-28'});`);
+  assert.throws(()=>run(ctx,`putTransaction({date:'2026-09-27',type:'transfer',amount:10,wallet:'cash',to:'bank'})`));
+  assert.throws(()=>run(ctx,`putDailyExpenses('2026-09-27',[{amount:10,wallet:'bank'}])`));
+  assert.strictEqual(run(ctx,'allTransactions().length'),0);
+});
+test('không dời mốc qua lịch sử; sao lưu giữ loại và ngày tài khoản',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  run(ctx,`putTransaction({date:'2026-09-20',type:'expense',amount:10,wallet:'cash'});`);
+  assert.throws(()=>run(ctx,`putWallet({name:'Tiền',type:'cash',opening:100,openingDate:'2026-09-21'},'cash')`));
+  run(ctx,`putWallet({name:'Tiền',type:'ewallet',opening:100,openingDate:'2026-09-20'},'cash'); S=sanitizeState(S);`);
+  assert.strictEqual(run(ctx,'S.wallets[0].type'),'ewallet');
+  assert.strictEqual(run(ctx,'S.wallets[0].openingDate'),'2026-09-20');
+  assert.strictEqual(run(ctx,"walletBalance('cash')"),90);
+  assert.strictEqual(run(ctx,'JSON.stringify(sanitizeState(S))===JSON.stringify(S)'),true);
+});
+
+test('trả từng phần liên kết: giảm tiền và kỳ nợ, không ghi trùng chi tiêu',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  run(ctx,`S.wallets[0].opening=10000000; S.debts=[cleanDebt({id:'d',mode:'custom',sched:[{k:'2026-10',a:2000000},{k:'2026-11',a:2000000},{k:'2026-12',a:2000000}]})];
+    recordDebtPayment({debt:'d',index:0,date:'2026-09-28',wallet:'cash',principal:500000,interest:10000,fee:5000});`);
+  assert.strictEqual(run(ctx,'S.debts[0].balance'),5500000);
+  assert.strictEqual(run(ctx,"walletBalance('cash')"),9485000);
+  assert.strictEqual(run(ctx,"spendSummary('2026-09').expense"),15000);
+  assert.strictEqual(run(ctx,"spendSummary('2026-09').net"),-515000);
+  assert.strictEqual(run(ctx,'unpaidRows(S.debts[0])[0].a'),1500000);
+  run(ctx,'S=sanitizeState(S); removeTransaction(allTransactions()[0].id);');
+  assert.strictEqual(run(ctx,'S.debts[0].balance'),6000000);
+  assert.strictEqual(run(ctx,"walletBalance('cash')"),10000000);
+});
+test('thanh toán vượt kỳ hoặc trước mốc không làm thay đổi dữ liệu',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  run(ctx,`S.wallets[0].openingDate='2026-09-28'; S.debts=[cleanDebt({id:'d',mode:'custom',sched:[{k:'2026-10',a:100}]})];`);
+  const before=run(ctx,'JSON.stringify(S)');
+  assert.throws(()=>run(ctx,`recordDebtPayment({debt:'d',index:0,date:'2026-09-28',wallet:'cash',principal:101})`));
+  assert.throws(()=>run(ctx,`recordDebtPayment({debt:'d',index:0,date:'2026-09-27',wallet:'cash',principal:50})`));
+  assert.strictEqual(run(ctx,'JSON.stringify(S)'),before);
+  run(ctx,`recordDebtPayment({debt:'d',index:0,date:'2026-09-28',wallet:'cash',principal:100});`);
+  assert.strictEqual(run(ctx,'unpaidRows(S.debts[0]).length'),0);
+  assert.throws(()=>run(ctx,`recordDebtPayment({debt:'d',index:0,date:'2026-09-28',wallet:'cash',principal:100})`));
+});
+
+test('mua tín dụng 500 nghìn cộng lịch 6 triệu, không trừ tiền hoặc đếm chi hai lần',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  run(ctx,`S.wallets[0].opening=10000000; S.debts=[cleanDebt({id:'d',mode:'custom',stmtDay:27,dueDay:10,sched:[{k:'2026-10',a:6000000}]})];
+    var buy=recordCreditPurchase({debt:'d',date:'2026-09-28',amount:500000,category:'Mua sắm'});`);
+  assert.strictEqual(run(ctx,'S.debts[0].balance'),6500000);
+  assert.strictEqual(run(ctx,"walletBalance('cash')"),10000000);
+  assert.strictEqual(run(ctx,"spendSummary('2026-09').expense"),500000);
+  assert.strictEqual(run(ctx,"spendSummary('2026-09').net"),0);
+  assert.strictEqual(run(ctx,'S.debts[0].sched[1].k'),'2026-10');
+  run(ctx,`var pay=recordDebtPayment({debt:'d',index:1,date:'2026-09-28',wallet:'cash',principal:500000}); S=sanitizeState(JSON.parse(JSON.stringify(S)));`);
+  assert.strictEqual(run(ctx,"spendSummary('2026-09').expense"),500000);
+  assert.strictEqual(run(ctx,"spendSummary('2026-09').net"),-500000);
+  assert.throws(()=>run(ctx,'removeTransaction(buy.id)'));
+  run(ctx,'removeTransaction(pay.id); removeTransaction(buy.id);');
+  assert.strictEqual(run(ctx,'S.debts[0].balance'),6000000);
+  assert.strictEqual(run(ctx,"walletBalance('cash')"),10000000);
+});
+test('ngày chốt, tháng ngắn và kỳ mua chọn tay',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  assert.strictEqual(run(ctx,"creditPeriod({stmtDay:27},'2026-09-27')"),'2026-09');
+  assert.strictEqual(run(ctx,"creditPeriod({stmtDay:27},'2026-09-28')"),'2026-10');
+  assert.strictEqual(run(ctx,"creditPeriod({stmtDay:31},'2026-02-28')"),'2026-02');
+  run(ctx,"S.debts=[cleanDebt({id:'d',mode:'custom',sched:[]})]");
+  assert.throws(()=>run(ctx,"recordCreditPurchase({debt:'d',date:'2026-09-28',amount:1,period:'2026-08'})"));
+  run(ctx,"recordCreditPurchase({debt:'d',date:'2026-09-28',amount:1,period:'2026-12'})");
+  assert.strictEqual(run(ctx,'S.debts[0].sched[0].k'),'2026-12');
+});
+test('lô chi hỗn hợp tiền mặt/tín dụng lỗi thì không lưu một phần',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  run(ctx,"S.debts=[cleanDebt({id:'d',mode:'custom',sched:[]})]");
+  const before=run(ctx,'JSON.stringify(S)');
+  assert.throws(()=>run(ctx,"putDailyExpenses('2026-09-28',[{debt:'d',amount:20},{wallet:'cash',amount:0}])"));
+  assert.strictEqual(run(ctx,'JSON.stringify(S)'),before);
+  run(ctx,"putDailyExpenses('2026-09-28',[{debt:'d',amount:20},{wallet:'cash',amount:10}])");
+  assert.strictEqual(run(ctx,"spendSummary('2026-09').expense"),30);
+  assert.strictEqual(run(ctx,"spendSummary('2026-09').net"),-10);
+});
+test('nhiều thanh toán, trùng tháng, undo không theo thứ tự, dấu trả cũ',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  run(ctx,`S.debts=[cleanDebt({id:'d',mode:'custom',sched:[{k:'2026-09',a:100},{k:'2026-09',a:200},{k:'2026-08',a:10,p:'2026-08-01'}]})];
+    var a=recordDebtPayment({debt:'d',index:0,date:'2026-09-28',wallet:'cash',principal:40});
+    var b=recordDebtPayment({debt:'d',index:0,date:'2026-09-28',wallet:'cash',principal:60}); removeTransaction(a.id);`);
+  assert.strictEqual(run(ctx,'S.debts[0].balance'),240);
+  run(ctx,'removeTransaction(b.id)');
+  assert.strictEqual(run(ctx,'S.debts[0].balance'),300);
+  assert.throws(()=>run(ctx,"recordDebtPayment({debt:'d',index:2,date:'2026-09-28',wallet:'cash',principal:1})"));
+});
+test('sửa kỳ chưa liên kết được, không làm mất liên kết cũ',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  run(ctx,`S.debts=[cleanDebt({id:'d',mode:'custom',sched:[{k:'2026-09',a:100},{k:'2026-10',a:200}]})];
+    recordDebtPayment({debt:'d',index:0,date:'2026-09-28',wallet:'cash',principal:40});
+    var rows=JSON.parse(JSON.stringify(S.debts[0].sched)); rows[1].a=300; validateDebtEdit(S.debts[0],'custom',rows);`);
+  assert.throws(()=>run(ctx,"validateDebtEdit(S.debts[0],'formula',[])"));
+  assert.throws(()=>run(ctx,"rows[0].a=500; validateDebtEdit(S.debts[0],'custom',rows)"));
+});
+test('chuyển công thức chỉ chuyển kỳ còn lại, giữ dấu cũ và không trừ tài khoản',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  run(ctx,`S.debts=[cleanDebt({id:'d',balance:12000000,rate:0,payment:1000000,months:12,paid:{'2026-09':{at:'2026-09-01'}}})]; convertFormulaDebt('d'); S=sanitizeState(S);`);
+  assert.strictEqual(run(ctx,'S.debts[0].sched.length'),12);
+  assert.strictEqual(run(ctx,'S.debts[0].sched[0].k'),'2026-10');
+  assert.strictEqual(run(ctx,'S.debts[0].balance'),12000000);
+  assert.strictEqual(run(ctx,'allTransactions().length'),0);
+  assert.strictEqual(run(ctx,"S.debts[0].paid['2026-09'].at"),'2026-09-01');
+});
+
+test('liên kết mồ côi hoặc phí vượt thanh toán không làm thay đổi trạng thái',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  run(ctx,`S.tx={'2026-09':[{id:'bad',type:'repayment',date:'2026-09-28',wallet:'cash',amount:10,debt:'missing',row:'missing'}]};`);
+  const before=run(ctx,'JSON.stringify(S)');
+  assert.throws(()=>run(ctx,"removeTransaction('bad')"));
+  assert.strictEqual(run(ctx,'JSON.stringify(S)'),before);
+  run(ctx,`S.debts=[cleanDebt({id:'missing',mode:'custom',sched:[{id:'missing',k:'2026-09',a:100,settled:10}]})]; S.tx['2026-09'][0].fee=20;`);
+  const malformed=run(ctx,'JSON.stringify(S)');
+  assert.throws(()=>run(ctx,"removeTransaction('bad')"));
+  assert.strictEqual(run(ctx,'JSON.stringify(S)'),malformed);
+});
+test('chuyển công thức có sao kê giữ đúng tháng đến hạn',()=>{
+  const ctx=makeCtx('2026-09-28',true);
+  run(ctx,"S.debts=[cleanDebt({id:'d',balance:12000000,payment:1000000,rate:0,stmtDay:27,dueDay:10})]; convertFormulaDebt('d')");
+  assert.strictEqual(run(ctx,'S.debts[0].sched[0].k'),'2026-08');
+  assert.strictEqual(run(ctx,'rowDue(S.debts[0],S.debts[0].sched[0].k).getMonth()'),8);
 });
 
 console.log('\n' + passed + ' đạt, ' + failed + ' lỗi');

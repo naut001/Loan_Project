@@ -1,5 +1,5 @@
 /* Khởi động ứng dụng. */
-function renderAll(){ renderHome(); renderDebts(); renderCalc(); renderRecv(); renderPlan(); renderFund(); }
+function renderAll(){ renderHome(); renderDebts(); renderCalc(); renderRecv(); renderPlan(); renderFund(); renderSpend(); renderReports(); }
 
 /* Xử lý link từ email (xác nhận đăng ký, đặt lại mật khẩu) rồi vào ứng dụng. */
 async function start(){

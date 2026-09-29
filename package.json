@@ -1,6 +1,6 @@
 {
   "name": "so-tra-no",
-  "version": "1.1.0",
+  "version": "1.3.0",
   "description": "Sổ trả nợ: theo dõi nợ, hạn trả, tiền phải thu và kế hoạch dòng tiền. Trang tĩnh, không cần build.",
   "private": true,
   "scripts": {

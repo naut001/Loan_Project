@@ -26,6 +26,12 @@ document.addEventListener('click', e=>{
   const da = e.target.closest('[data-dact]'); if(da && dlg){ dialogAction(da); return; }
   const b = e.target.closest('[data-act]'); if(!b) return;
   const act = b.dataset.act, d = S.debts.find(x=>x.id===b.dataset.id);
+  if(d && ['del-debt','del-yes','unpay'].includes(act) && allTransactions().some(t=>['repayment','credit'].includes(t.type)&&t.debt===d.id)) return toast('Khoản nợ có giao dịch liên kết. Hoàn tác giao dịch trong Chi tiêu trước khi xoá hoặc hoàn tác lịch cũ.');
+  if(act==='linked-pay' && d){ debtPaymentDialog(d); return; }
+  if(act==='convert-debt' && d){
+    spendDialog('Chuyển sang lịch linh hoạt',`<p>Chỉ chuyển các kỳ còn lại của ${esc(d.name)}. Tổng lịch gồm cả lãi dự kiến, nên khác dư nợ gốc. Không trừ tài khoản hoặc tạo lịch sử trả nợ cũ.</p><p>Đối chiếu lịch ngân hàng sau khi chuyển. Hãy xuất sao lưu trước nếu muốn trở lại công thức cũ.</p>`,()=>convertFormulaDebt(d.id)); return;
+  }
+  if(spendAction(act,b)) return;
   if(backupAction(act, b)) return;
   if(act==='add-debt') debtDialog();
   else if(act==='edit-debt' && d) debtDialog(d);
@@ -38,12 +44,13 @@ document.addEventListener('click', e=>{
   else if(act==='del-yes' && d){ S.debts=S.debts.filter(x=>x!==d); save(); renderAll(); toast('Đã xoá khoản nợ'); }
   else if(act==='pay' && d){
     if(isCustom(d)){
-      const u=unpaidRows(d); if(!u.length) return;
-      const k=u[0].k; u.filter(r=>r.k===k).forEach(r=>{ r.p=todayStr(); }); d.lastPaidK=k; recalc(d);
-      save(); renderAll(); toast(d.balance===0?'Đã tất toán "'+d.name+'"!':'Đã ghi nhận kỳ trả'); return;
+      debtPaymentDialog(d); return;
     }
-    const key = monthKey(today()); const i = Math.round(d.balance*mr(d)); let prin = d.payment - i; if(prin>d.balance) prin=d.balance;
-    d.paid = d.paid||{}; d.paid[key] = {prevBalance:d.balance, prevMonths:d.months, at:new Date().toISOString().slice(0,10)};
+    const key = monthKey(today());
+    if(d.balance<=0 || (d.paid && d.paid[key])) return;
+    if(!(d.payment>0)) return toast('Nhập số tiền trả trước khi ghi nhận.');
+    const i = Math.round(d.balance*mr(d)); let prin = d.payment - i; if(prin>d.balance) prin=d.balance;
+    d.paid = d.paid||{}; d.paid[key] = {prevBalance:d.balance, prevMonths:d.months, at:todayStr()};
     d.balance = Math.max(0, Math.round(d.balance - prin)); d.months = Math.max(0,(d.months||0)-1);
     save(); renderAll(); toast(d.balance===0?'Đã tất toán "'+d.name+'"!':'Đã ghi nhận kỳ trả');
   }
@@ -105,6 +112,7 @@ document.addEventListener('input', e=>{
 });
 document.addEventListener('change', e=>{
   const t = e.target;
+  if(t.id==='spend-month' || t.id==='report-month'){ if(isMK(t.value)){ spendMonth=t.value; renderSpend(); renderReports(); } return; }
   if(t.id==='bk-file'){ const f=t.files && t.files[0]; if(f) f.text().then(tx=>{ const ta=$('#bk-text'); if(ta) ta.value=tx; }); return; }
   if(t.dataset && t.dataset.plan){ planEdit(t); return; }
   if(dlg && t.id==='f-duemode'){ collectVals(); renderDebtDialog(); return; }

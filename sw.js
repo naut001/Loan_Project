@@ -1,8 +1,8 @@
 /* Service worker: ưu tiên mạng, có bản lưu để dùng khi ngoại tuyến. Đổi VERSION khi thay danh sách file. */
-const VERSION = 'so-tra-no-v1.1.0';
+const VERSION = 'so-tra-no-v1.3.0';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css',
-  'js/util.js', 'js/loan.js', 'js/model.js', 'js/state.js',
+  'js/util.js', 'js/loan.js', 'js/model.js', 'js/spend.js', 'js/exports.js', 'js/state.js', 'js/views/spend.js',
   'js/views/home.js', 'js/views/debts.js', 'js/views/calc.js', 'js/views/recv.js', 'js/views/plan.js', 'js/views/fund.js', 'js/views/backup.js',
   'js/events.js', 'js/supabase-sync.js', 'js/auth.js', 'js/views/login.js', 'js/app.js', 'js/pwa.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'

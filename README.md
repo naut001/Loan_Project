@@ -8,6 +8,9 @@ Trang web tĩnh (HTML, CSS, JavaScript thuần, không cần build) để:
 - **Phải thu**: tiền người khác nợ bạn, hạn hẹn trả, ghi nhận từng lần thu.
 - **Kế hoạch tiền**: tiền đang có, khoản vay dự định, mua sắm dự định, dòng tiền 12 tháng tới.
 - **Quỹ dự phòng**.
+- **Chi tiêu**: ví, số dư ban đầu, thu/chi/chuyển ví, sửa/xoá giao dịch và ngân sách theo tháng.
+- **Báo cáo**: chi theo danh mục, cảnh báo vượt ngân sách, xu hướng 6 tháng, so tháng trước và dự báo chi cuối tháng.
+- **Xuất dữ liệu**: CSV giao dịch của tháng đang xem; lịch nhắc trả nợ `.ics` ở Tổng quan → Dữ liệu và sao lưu.
 
 Có hai chế độ:
 
@@ -46,7 +49,7 @@ git push
 Rồi vào **Settings → Pages → Source: GitHub Actions**. Workflow chạy test và đăng trang. Repo cần **public** nếu dùng tài khoản GitHub miễn phí.
 
 ### 4. Tạo tài khoản của bạn, rồi khoá đăng ký
-M�� trang, chọn **Tạo tài khoản**. Sau khi tạo xong tài khoản của mình, vào **Authentication → Sign In / Providers** và **tắt "Allow new users to sign up"**, để người lạ không tạo được tài khoản trên dự án của bạn.
+M�� trang, chọn **Tạo tài khoản**. Sau khi tạo xong tài khoản của mình, vào **Authentication → Sign In / Providers** và **tắt "Allow new users to sign up"**, để người lạ không tạo được tài khoản trên dự án của bạn.
 
 ## Chạy ở máy
 
@@ -114,6 +117,19 @@ tests/run.js             Bộ kiểm thử
 - Dữ liệu đọc từ localStorage, file nhập hay đám mây đều đi qua `sanitizeState`. Thêm trường mới thì thêm luôn vào hàm `clean...` trong `state.js`.
 
 ## Giới hạn
+
+### Bản 1.2.0 — dữ liệu và cách dùng
+
+- Nhập số dư ví **trước giao dịch đầu tiên**, không nhập số dư hiện tại rồi nhập lại giao dịch cũ.
+- Chuyển ví không được tính vào thu/chi. Ví có giao dịch không thể xoá để tránh mất tham chiếu.
+- Chi tiêu độc lập với Kế hoạch, Phải thu và ghi nhận Đã trả nợ; chưa tự tạo giao dịch giữa các mục.
+- Ngân sách áp dụng riêng từng tháng, chưa có giao dịch định kỳ. Báo cáo so với toàn bộ tháng trước; tháng hiện tại có thể chưa kết thúc.
+- Giao dịch lưu trong `tx['YYYY-MM']` nhưng **vẫn đồng bộ toàn bộ payload** trong bảng `user_data`, giữ giới hạn 1 MB và nguyên tắc bản mới hơn thắng. Không cần thay SQL cho bản này; chưa đồng bộ riêng từng tháng.
+- Sao lưu JSON chứa cả ví, giao dịch và ngân sách. Sao lưu cũ được bổ sung ví mặc định khi đọc. Không mở bản dữ liệu mới bằng ứng dụng phiên bản cũ vì bản cũ không giữ các trường mới.
+- Khi dữ liệu cục bộ không đọc được, ứng dụng dừng và chặn lưu/đồng bộ, cho tải bản gốc để phục hồi. Không xoá bộ nhớ trình duyệt trước khi giữ bản sao.
+- CSV có BOM UTF-8 và vô hiệu hoá ô văn bản bắt đầu như công thức bảng tính. File lịch là ảnh chụp lịch dự kiến, không tự cập nhật hay xoá sự kiện đã nhập; kiểm tra nhắc báo trong ứng dụng lịch.
+- Các file mới: `js/spend.js` (mô hình), `js/exports.js` (CSV/ICS), `js/views/spend.js` (Chi tiêu/Báo cáo). Hai file logic mới nạp trước `state.js` để đọc dữ liệu cũ an toàn.
+- Chưa triển khai mô hình thẻ tín dụng chuyên biệt, bốn cách tính lãi, IRR và mô phỏng chiến lược trả nợ của kế hoạch 2.0.
 
 - Không có thông báo đẩy: ứng dụng nhắc khi bạn mở nó. Nên đặt thêm nhắc lịch trên điện thoại.
 - Phông Be Vietnam Pro tải từ Google Fonts; ngoại tuyến sẽ dùng phông hệ thống.

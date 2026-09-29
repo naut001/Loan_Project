@@ -28,6 +28,8 @@ function renderDebts(){
       <div class="bar"><span style="width:${Math.max(0,Math.min(100,prog)).toFixed(1)}%"></span></div>
       <div class="btns" style="margin-top:10px"><button class="btn sm" data-act="edit-debt" data-id="${d.id}">Sửa</button>
       <button class="btn sm" data-act="sched-debt" data-id="${d.id}">Lịch trả</button>
+      ${isCustom(d)&&!done?`<button class="btn sm primary" data-act="linked-pay" data-id="${d.id}">Thanh toán từ tài khoản</button>`:''}
+      ${!isCustom(d)&&!done?`<button class="btn sm" data-act="convert-debt" data-id="${d.id}">Chuyển sang lịch linh hoạt</button>`:''}
       <button class="btn sm ghost danger" data-act="del-debt" data-id="${d.id}">Xoá</button></div></div>`;
   }).join('');
   const lims = S.debts.filter(d=>d.limit>0); let limPanel='';
@@ -156,11 +158,13 @@ function saveDebt(e){
   const dueDayVal = after ? stmt : day, limitVal = parseMoney(v.limit);
   const d = dlg.d, isNew = dlg.isNew; let obj;
   if(dlg.mode==='custom'){
-    const sched = dlg.rows.filter(r=>r.a>0).map(r=>({k:r.k,a:r.a,p:r.p||0})).sort((x,y)=>x.k<y.k?-1:x.k>y.k?1:0);
+    const sched = dlg.rows.filter(r=>r.a>0).map(r=>({...r,p:r.p||0})).sort((x,y)=>x.k<y.k?-1:x.k>y.k?1:0);
+    try{ if(d) validateDebtEdit(d,dlg.mode,sched); }catch(e){ return err.textContent=e.message; }
     if(!sched.length) return err.textContent='Nhập ít nhất một tháng có số tiền.';
     obj = Object.assign(d || {id:uid(), paid:{}}, {name, kind:v.kind, mode:'custom', sched, dueDay:dueDayVal, limit:limitVal, stmtDay:stmt, dueMode:after?'after':'day', grace:after?grace:0, prepay, principal:parseMoney(v.principal), rate:0, rateImplied:false});
     recalc(obj);
   } else {
+    try{ if(d) validateDebtEdit(d,dlg.mode,[]); }catch(e){ return err.textContent=e.message; }
     const bal = parseMoney(v.bal); let rate = parseNum(v.rate), pay = parseMoney(v.pay), months = parseInt(v.months)||0;
     if(!bal) return err.textContent='Nhập dư nợ hiện tại.';
     const have = (rate>0)+(pay>0)+(months>0);
@@ -181,7 +185,7 @@ function schedDialog(d){
   if(isCustom(d)){
     const hasSt = d.stmtDay>0;
     const rows = (d.sched||[]).slice().sort((x,y)=>x.k<y.k?-1:x.k>y.k?1:0).map(r=>{ const [yy,mm]=r.k.split('-').map(Number); const du=rowDue(d,r.k); const st=hasSt?dueDate(yy,mm-1,d.stmtDay):null;
-      return `<tr><td>${hasSt?st.getDate()+'/'+(st.getMonth()+1):kLabel(r.k)}</td>${hasSt?`<td>${du.getDate()}/${du.getMonth()+1}</td>`:''}<td>${fmt(r.a)}</td><td>${r.p?'Đã trả '+esc(r.p):'Chưa trả'}</td></tr>`; }).join('');
+      return `<tr><td>${hasSt?st.getDate()+'/'+(st.getMonth()+1):kLabel(r.k)}</td>${hasSt?`<td>${du.getDate()}/${du.getMonth()+1}</td>`:''}<td>${fmt(r.a)}</td><td>${r.p?'Đã trả '+esc(r.p):r.settled?'Đã thanh toán '+fmt(r.settled)+' đ · còn '+fmt(rowRemaining(r))+' đ':'Chưa trả'}</td></tr>`; }).join('');
     const cost = d.principal>0 ? `Phí/lãi còn lại so với gốc: ${fmt(Math.max(0,d.balance-d.principal))} đ.` : 'Nhập "gốc còn lại" khi sửa để biết phí/lãi ẩn trong các kỳ.';
     $('#dlgForm').innerHTML = `<div class="dh">${esc(d.name)}: lịch trả</div><div class="db"><div class="tbl" style="max-height:60vh;overflow:auto"><table><thead><tr><th>${hasSt?'Sao kê':'Tháng'}</th>${hasSt?'<th>Hạn trả</th>':''}<th>Số tiền</th><th>Trạng thái</th></tr></thead><tbody>${rows}</tbody></table></div>
     <p class="small muted" style="margin-top:8px">Tổng còn phải trả: ${fmt(d.balance)} đ. ${cost}</p></div><div class="df"><button class="btn" value="close">Đóng</button></div>`;

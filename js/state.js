@@ -1,16 +1,17 @@
 /* Trạng thái ứng dụng, làm sạch dữ liệu và lưu trữ cục bộ (localStorage). */
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.3.0';
 const LS_KEY = 'so-tra-no:v1';
 
 const blank = () => ({v:1, updatedAt:0, income:0, debts:[], recv:[],
+  wallets:[{id:'cash',name:'Tiền mặt',opening:0,type:'cash',openingDate:''}], tx:{}, budgets:{},
   plan:{cash:[],living:0,buffer:0,incomePending:false,loans:[],buys:[]},
   fund:{target:0,saved:0,monthly:0,log:[]},
   calc:{amount:100000000, rate:17.99, months:24, prepay:4, upfront:0, payoffAt:12, consolidate:[]}});
 
 /* ---- Làm sạch dữ liệu đọc từ localStorage hoặc file nhập: ép kiểu, giới hạn độ dài, bỏ trường lạ ---- */
 const isMK  = k => /^\d{4}-(0[1-9]|1[0-2])$/.test(String(k));
-const isISO = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s));
-const okId  = v => /^[A-Za-z0-9_-]{1,40}$/.test(String(v));
+const isISO = s => typeof s==='string' && !!parseISO(s);
+const okId  = v => v!=null && /^[A-Za-z0-9_-]{1,40}$/.test(String(v));
 const cn = (v,d=0) => { const n=Number(v); return Number.isFinite(n) ? n : d; };
 const cs = (v,max=200) => String(v==null?'':v).slice(0,max);
 const cid = v => okId(v) ? String(v) : uid();
@@ -27,7 +28,7 @@ function cleanDebt(d){
     dueMode:d.dueMode==='after'?'after':'day', grace:clamp(Math.round(cn(d.grace)),0,60), rateImplied:!!d.rateImplied, paid:{}};
   if(d.paid && typeof d.paid==='object') Object.keys(d.paid).forEach(k=>{ if(isMK(k)){ const p=d.paid[k]||{}; o.paid[k]={prevBalance:cn(p.prevBalance),prevMonths:Math.round(cn(p.prevMonths)),at:cs(p.at,10)}; } });
   if(custom){
-    o.sched = arr(d.sched).filter(r=>r && isMK(r.k)).map(r=>({k:String(r.k), a:Math.max(0,cn(r.a)), p:r.p?cs(r.p,10):0}));
+    o.sched = arr(d.sched).filter(r=>r && isMK(r.k)).map(r=>({k:String(r.k), a:Math.max(0,cn(r.a)), p:r.p?cs(r.p,10):0,...(okId(r.id)?{id:String(r.id)}:{}),...(r.settled>0?{settled:Math.min(Math.max(0,cn(r.a)),Math.max(0,cn(r.settled)))}:{})}));
     if(isMK(d.lastPaidK)) o.lastPaidK = String(d.lastPaidK);
     recalc(o);
   }
@@ -55,6 +56,7 @@ function sanitizeState(raw){
   const f = raw.fund || {}, c = raw.calc || {}, base = blank().calc;
   return {v:1, updatedAt:Math.max(0,cn(raw.updatedAt)), income:Math.max(0,cn(raw.income)),
     debts:arr(raw.debts).map(cleanDebt), recv:arr(raw.recv).map(cleanRecv), plan:cleanPlan(raw.plan),
+    ...cleanSpend(raw),
     fund:{target:Math.max(0,cn(f.target)), saved:Math.max(0,cn(f.saved)), monthly:Math.max(0,cn(f.monthly)),
       log:arr(f.log).slice(-60).map(x=>({d:cs(x&&x.d,20), a:cn(x&&x.a)}))},
     calc:{amount:Math.max(0,cn(c.amount,base.amount)), rate:Math.max(0,cn(c.rate,base.rate)), months:clamp(Math.round(cn(c.months,base.months)),1,360),
@@ -62,10 +64,13 @@ function sanitizeState(raw){
 }
 
 let S = blank();
-try{ const raw = localStorage.getItem(LS_KEY); if(raw) S = sanitizeState(JSON.parse(raw)); }catch(e){}
+let stateLoadError = false, unreadState = null;
+try{ unreadState = localStorage.getItem(LS_KEY); if(unreadState) S = sanitizeState(JSON.parse(unreadState)); }
+catch(e){ stateLoadError = true; }
 
 function setSync(kind, text){ const el=$('#sync'); if(!el) return; el.className='sync '+kind; const sp=el.querySelector('span'); if(sp) sp.textContent=text; }
 function save(){
+  if(stateLoadError){ toast('Dữ liệu cũ chưa đọc được. Đã chặn lưu để tránh ghi đè.'); return; }
   S.updatedAt = Date.now();
   try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){ toast('Không lưu được vào trình duyệt (bộ nhớ đầy hoặc bị chặn).'); }
   if(typeof cloudSave==='function') cloudSave();

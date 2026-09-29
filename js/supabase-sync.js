@@ -22,6 +22,7 @@ function cloudSave(){
 }
 
 async function cloudFlush(){
+  if(typeof stateLoadError!=='undefined' && stateLoadError) return;
   if (!cloudEnabled() || !isLoggedIn()) return;
   if (cloud.saving) { cloud.pending = true; return; }
   cloud.saving = true;
@@ -42,6 +43,7 @@ async function cloudFlush(){
 
 /* Kết quả: 'ok' | 'offline' (mất mạng hoặc lỗi máy chủ, giữ dữ liệu trên máy) | 'unauth' (cần đăng nhập lại). */
 async function cloudLoad(){
+  if(typeof stateLoadError!=='undefined' && stateLoadError) return 'offline';
   try {
     await maybeRefresh();
     const uid = getUserId(); if (!uid) return 'unauth';
@@ -70,6 +72,12 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) clou
 window.addEventListener('online', cloudPull);
 
 async function connect(){
+  if(stateLoadError){
+    setSync('warn', 'Không đọc được dữ liệu cũ');
+    $('#app-shell').innerHTML='<div class="wrap"><h2>Đã dừng để bảo vệ dữ liệu</h2><p>Không đọc được dữ liệu trên thiết bị. Chưa ghi đè hoặc đồng bộ. Hãy tải bản gốc để giữ lại trước khi xử lý lỗi; không xoá bộ nhớ trình duyệt.</p><button type="button" class="btn" id="recover-raw">Tải dữ liệu gốc</button><p class="small muted">Sau khi khắc phục lỗi hoặc quyền truy cập bộ nhớ, tải lại trang.</p></div>';
+    $('#recover-raw').onclick=()=>unreadState===null ? toast('Trình duyệt đang chặn đọc bộ nhớ. Hãy kiểm tra quyền lưu trữ.') : saveFile('so-tra-no-phuc-hoi.txt',unreadState,'text/plain;charset=utf-8');
+    return;
+  }
   if (!cloudEnabled()) { hideLogin(); setAccountBtn(false); renderAll(); setSync('local', 'Chỉ lưu trên thiết bị này'); return; }
   if (!isLoggedIn()) { setAccountBtn(false); setSync('local', 'Chưa đăng nhập'); showLogin(); return; }
   hideLogin(); setAccountBtn(true); renderAll(); setSync('local', 'Đang đồng bộ…');

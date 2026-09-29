@@ -16,7 +16,8 @@ const addMonths = (d,n) => new Date(d.getFullYear(), d.getMonth()+n, 1);
 const monthLabel = d => 'tháng ' + (d.getMonth()+1) + '/' + d.getFullYear();
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('on'); clearTimeout(toast._t); toast._t=setTimeout(()=>t.classList.remove('on'),2200); }
 
-const todayStr = () => new Date().toISOString().slice(0,10);
+const dateKey = d => monthKey(d) + '-' + String(d.getDate()).padStart(2,'0');
+const todayStr = () => dateKey(today());
 function monthOptions(sel){
   const base = addMonths(today(), -3); let h=''; let found=false;
   for(let i=0;i<42;i++){ const m=addMonths(base,i); const k=monthKey(m); if(k===sel) found=true; h+=`<option value="${k}" ${k===sel?'selected':''}>${m.getMonth()+1}/${m.getFullYear()}</option>`; }
