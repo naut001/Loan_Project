@@ -1,9 +1,27 @@
 import { expect, it, vi } from 'vitest';
 import { createCloudClient } from './cloud';
+import { parseSnapshot, summarize } from './snapshot';
 const payload = { v: 1, wallets: [{ id: 'cash', name: 'Tiền mặt', opening: 10, openingDate: '2026-01-01' }], debts: [], tx: {}, recv: [{ name: 'Giữ nguyên' }], plan: { living: 55 }, fund: { saved: 25 }, updatedAt: 1 };
 const session = { access_token: 'token', user: { id: 'u' } };
 const reply = (x: unknown) => new Response(JSON.stringify(x));
 const entry = { type: 'expense' as const, wallet: 'cash', amount: 5, date: '2026-01-02', note: 'Kiểm thử' };
+it('chuyển ví giữ tổng tiền, kiểm tra cả hai mốc và mở lại sao lưu', async () => {
+  const source = { ...payload, wallets: [...payload.wallets, { id: 'bank', name: 'Ngân hàng', opening: 0, openingDate: '2026-01-02' }] };
+  const request = vi.fn<typeof fetch>().mockResolvedValueOnce(reply(session)).mockResolvedValueOnce(reply([{ payload: source, updated_at: '2026-01-01T00:00:00Z' }])).mockImplementationOnce(async (_url, options) => reply([{ payload: JSON.parse(String(options?.body)).payload, updated_at: '2026-01-03T00:00:00Z' }]));
+  const cloud = createCloudClient('https://test.supabase.co', 'key', request);
+  await cloud.signIn('a', 'b'); await cloud.load();
+  const transfer = { ...entry, type: 'transfer' as const, to: 'bank' };
+  await expect(cloud.addCashEntry({ ...transfer, to: 'cash' })).rejects.toThrow('khác');
+  await expect(cloud.addCashEntry({ ...transfer, to: 'missing' })).rejects.toThrow('khác');
+  await expect(cloud.addCashEntry({ ...transfer, date: '2026-01-01' })).rejects.toThrow('đầu kỳ');
+  expect(request).toHaveBeenCalledTimes(2);
+  await cloud.addCashEntry(transfer);
+  const data = parseSnapshot(cloud.exportBackup());
+  const summary = summarize(data, entry.date);
+  expect(summary.cash).toBe(10); expect(summary.income).toBe(0); expect(summary.expense).toBe(0);
+  expect(summary.balances.map(w => w.balance)).toEqual([5, 5]);
+  expect(JSON.parse(cloud.exportBackup()).data.recv).toEqual(payload.recv);
+});
 it('PATCH có điều kiện revision, giữ nguyên toàn bộ trường không hiển thị', async () => {
   const request = vi.fn<typeof fetch>().mockResolvedValueOnce(reply(session)).mockResolvedValueOnce(reply([{ payload, updated_at: '2026-01-01T00:00:00Z' }])).mockImplementationOnce(async (_url, options) => reply([{ payload: JSON.parse(String(options?.body)).payload, updated_at: '2026-01-02T00:00:00Z' }]));
   const cloud = createCloudClient('https://test.supabase.co', 'key', request);

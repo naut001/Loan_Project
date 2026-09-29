@@ -3,6 +3,12 @@ import { parseSnapshot, summarize } from './snapshot';
 
 const base = { v: 1, wallets: [{ id: 'cash', name: 'Tiền mặt', opening: 1000 }, { id: 'bank', name: 'Ngân hàng', opening: 0 }], debts: [], tx: {} };
 describe('Bản chụp chỉ đọc', () => {
+  it('đọc sao lưu có lớp bọc của bản cũ và v2', () => {
+    for (const version of ['1.3.0', '2.0.0-preview']) {
+      expect(parseSnapshot(JSON.stringify({ app: 'so-tra-no', version, data: base }))).toEqual(parseSnapshot(JSON.stringify(base)));
+    }
+    expect(() => parseSnapshot(JSON.stringify({ app: 'khác', data: base }))).toThrow();
+  });
   it('không thay đổi dữ liệu nguồn', () => {
     const raw = JSON.stringify(base); const data = parseSnapshot(raw);
     summarize(data, '2026-09-29'); expect(JSON.stringify(data)).toBe(JSON.stringify({ wallets: base.wallets, tx: {}, debts: [] }));

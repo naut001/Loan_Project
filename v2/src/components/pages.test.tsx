@@ -10,6 +10,8 @@ const data: Snapshot = { wallets: [], tx: {}, debts: [] };
 it('dựng khung ứng dụng và các màn hình khi chưa có dữ liệu', () => {
   expect(renderToStaticMarkup(<App />)).toContain('Bắt đầu từ bức tranh tài chính');
   expect(renderToStaticMarkup(<SpendPage data={data} />)).toContain('Không có giao dịch khớp bộ lọc');
+  expect(renderToStaticMarkup(<SpendPage data={data} />)).toContain('Xuất CSV toàn bộ tháng');
+  expect(renderToStaticMarkup(<SpendPage data={data} />)).toContain('không áp dụng bộ lọc hoặc phân trang');
   expect(renderToStaticMarkup(<DebtsPage data={data} />)).toContain('Không có khoản nợ khớp bộ lọc');
 });
 it('thoát HTML trong tên khoản nợ nhập từ JSON', () => {
