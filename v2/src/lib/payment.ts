@@ -5,7 +5,7 @@ import { parseSnapshot } from './snapshot';
 
 export interface DebtPayment { debt: string; index: number; wallet: string; date: string; principal: number; interest: number; fee: number; note: string }
 
-function recalculate(debt: Debt) {
+export function recalculate(debt: Debt) {
   const unpaid = (debt.sched || []).filter(r => remaining(r) > 0).slice().sort((a, b) => a.k.localeCompare(b.k));
   Object.assign(debt, { balance: unpaid.reduce((sum, r) => sum + remaining(r), 0), payment: unpaid.filter(r => r.k === unpaid[0]?.k).reduce((sum, r) => sum + remaining(r), 0), months: unpaid.length, original: (debt.sched || []).reduce((sum, r) => sum + r.a, 0) });
 }

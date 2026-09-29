@@ -1,6 +1,7 @@
 import { isCashEditable, parseSnapshot, type Snapshot } from './snapshot';
 import { localDate } from './format';
 import { categories } from './budget';
+import { applyCreditPurchase, undoCreditPurchase, type CreditPurchase } from './credit';
 import { applyDebtPayment, undoDebtPayment, type DebtPayment } from './payment';
 
 export class CloudError extends Error {
@@ -114,6 +115,13 @@ export function createCloudClient(url: string, key: string, request: typeof fetc
       }
       const month = entry.date.slice(0, 7);
       (tx[month] ||= []).push({ ...existing, ...entry, note: entry.note.trim(), id: id || crypto.randomUUID(), to: entry.type === 'transfer' ? entry.to : '', category: entry.category ?? existing?.category ?? (entry.type === 'income' ? 'Lương' : 'Khác') });
+      return commit(payload, signal);
+    },
+    async saveCredit(values: CreditPurchase | string, signal?: AbortSignal): Promise<Snapshot> {
+      if (!session || !loaded || saving) throw new CloudError('Hãy tải lại dữ liệu tài khoản trước khi lưu.');
+      const payload = structuredClone(loaded.payload);
+      if (typeof values === 'string') undoCreditPurchase(payload, values);
+      else applyCreditPurchase(payload, values);
       return commit(payload, signal);
     },
     async undoPayment(id: string, signal?: AbortSignal): Promise<Snapshot> {

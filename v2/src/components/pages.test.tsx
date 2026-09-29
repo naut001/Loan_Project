@@ -4,9 +4,16 @@ import { expect, it } from 'vitest';
 import { DebtsPage } from './DebtsPage';
 import { SpendPage } from './SpendPage';
 import { App } from '../App';
+import { CreditForm } from './CreditForm';
 import type { Snapshot } from '../lib/snapshot';
 
 const data: Snapshot = { wallets: [], tx: {}, debts: [] };
+it('biểu mẫu tín dụng khoá khi chưa cho phép ghi và giải thích tác động', () => {
+  const html = renderToStaticMarkup(<CreditForm data={data} disabled onSave={async () => {}} />);
+  expect(html).toContain('<fieldset disabled=""');
+  expect(html).toContain('không trừ tiền ví');
+  expect(html).toContain('Hoàn tác khoản mua đã chọn');
+});
 it('dựng khung ứng dụng và các màn hình khi chưa có dữ liệu', () => {
   expect(renderToStaticMarkup(<App />)).toContain('Bắt đầu từ bức tranh tài chính');
   expect(renderToStaticMarkup(<SpendPage data={data} />)).toContain('Không có giao dịch khớp bộ lọc');

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { CloudError, createCloudClient, type WalletEntry, type CashEntry } from '../lib/cloud';
 import { BatchForm } from './BatchForm';
+import { CreditForm } from './CreditForm';
+import type { CreditPurchase } from '../lib/credit';
 import { PaymentForm } from './PaymentForm';
 import type { DebtPayment } from '../lib/payment';
 import { WalletForm } from './WalletForm';
@@ -97,6 +99,25 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
     } catch (error) {
       if (!controller.signal.aborted && error instanceof CloudError && (error.status === 401 || error.status === 403)) { setAccount(''); setWallets([]); onDisconnect(); }
       if (!controller.signal.aborted) setMessage(`${error instanceof Error ? error.message : 'Lưu thất bại.'} Tải lại và kiểm tra lịch sử trước khi thử lại; nếu mất mạng, giao dịch có thể đã được lưu.`);
+    } finally { if (pending.current === controller) { pending.current = null; setBusy(false); } }
+  };
+  const saveCredit = async (values: CreditPurchase | string) => {
+    if (pending.current || !client.current?.canSave()) return;
+    const undo = typeof values === 'string';
+    const item = undo ? Object.values(transactions).flat().find(t => t.id === values && t.type === 'credit') : undefined;
+    if (undo && !item) return;
+    if (!window.confirm(typeof values === 'string' ? `Hoàn tác khoản mua ngày ${item?.date}, ${item?.amount.toLocaleString('vi-VN')} đ và xoá kỳ nợ liên kết chưa trả?` : `Ghi khoản mua ${values.amount.toLocaleString('vi-VN')} đ vào lịch nợ? Tiền ví không giảm.`)) return;
+    const controller = new AbortController(); pending.current = controller; setBusy(true); setMessage('Đang lưu khoản mua…');
+    try {
+      const data = await client.current.saveCredit(values, controller.signal);
+      if (controller.signal.aborted) return;
+      setDebts(data.debts); setTransactions(data.tx);
+      onLoad(data, `Tài khoản ${account} · đã cập nhật khoản mua tín dụng`);
+      setMessage(client.current.canSave() ? (undo ? 'Đã hoàn tác khoản mua.' : 'Đã lưu khoản mua. Không nhập lại ở bản 1.3.') : 'Máy chủ đã phản hồi; tải lại kiểm tra trước khi tiếp tục.');
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      if (error instanceof CloudError && (error.status === 401 || error.status === 403)) { setAccount(''); onDisconnect(); }
+      setMessage(`${error instanceof Error ? error.message : 'Không lưu được khoản mua.'} Nếu đã gửi yêu cầu, tải lại kiểm tra trước khi thử lại.`);
     } finally { if (pending.current === controller) { pending.current = null; setBusy(false); } }
   };
   const savePayment = async (values: DebtPayment | string) => {
@@ -206,6 +227,7 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
       {account && <WalletForm key={`${account}:${JSON.stringify(wallets)}`} wallets={wallets} disabled={busy || !client.current?.canSave()} onSave={saveWallet} onRemove={id => saveWallet(undefined, id)} />}
       {account && wallets.length > 0 && <BatchForm key={`${account}:${JSON.stringify(wallets)}`} wallets={wallets} disabled={busy || !client.current?.canSave()} onSave={saveBatch} />}
       {account && wallets.length > 0 && <PaymentForm key={`${account}:${JSON.stringify(debts)}:${JSON.stringify(wallets)}`} data={{ debts, wallets, tx: transactions }} disabled={busy || !client.current?.canSave()} onSave={savePayment} onUndo={savePayment} />}
+      {account && <CreditForm key={`${account}:${JSON.stringify(debts)}`} data={{ debts, wallets, tx: transactions }} disabled={busy || !client.current?.canSave()} onSave={saveCredit} />}
       {account && <BudgetForm data={{ wallets, tx: transactions, debts: [], budgets }} disabled={busy || !client.current?.canSave()} onSave={saveBudget} />}
       {account && <Button variant="outline" disabled={busy || !client.current?.canSave()} onClick={exportBackup}>Tải sao lưu đầy đủ từ tài khoản</Button>}
       {message && <p className="footnote" role="status">{message}</p>}
