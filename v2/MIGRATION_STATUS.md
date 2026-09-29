@@ -18,8 +18,12 @@ cloud writes. It retains legacy paid markers and extension fields without genera
 historical payments or changing wallet balances. VM tests compare schedules with v1.3.
 Conversion has no reverse action; export a backup first and reconcile with the lender.
 
+Basic debt management supports creating empty custom debts, renaming existing debts,
+editing due-date settings only without balances/history, and deleting empty debts only.
+Existing schedules, paid markers, transaction links and extension fields are retained.
+
 Still required before switching the main site:
-- Debt CRUD.
+- Full debt CRUD: formula creation/editing and direct monthly schedule editing.
 - Receivable CRUD and collection history/undo.
 - Full planning/calculator/report parity and ICS export.
 - Full backup restoration and local persistence/synchronization.
