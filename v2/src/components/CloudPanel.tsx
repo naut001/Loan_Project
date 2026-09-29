@@ -101,6 +101,21 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
       if (!controller.signal.aborted) setMessage(`${error instanceof Error ? error.message : 'Lưu thất bại.'} Tải lại và kiểm tra lịch sử trước khi thử lại; nếu mất mạng, giao dịch có thể đã được lưu.`);
     } finally { if (pending.current === controller) { pending.current = null; setBusy(false); } }
   };
+  const convertDebt = async (id: string) => {
+    if (pending.current || !client.current?.canSave()) return;
+    if (!window.confirm('Chuyển các kỳ còn lại sang lịch tháng? Tổng lịch gồm lãi dự kiến nên có thể lớn hơn dư nợ gốc. Không trừ ví hay tạo thanh toán cũ. Hãy tải sao lưu trước; chưa có nút quay lại công thức. Sau chuyển cần đối chiếu lịch ngân hàng.')) return;
+    const controller = new AbortController(); pending.current = controller; setBusy(true);
+    try {
+      const data = await client.current.convertDebt(id, controller.signal);
+      if (controller.signal.aborted) return;
+      setDebts(data.debts); onLoad(data, `Tài khoản ${account} · đã chuyển lịch nợ`);
+      setMessage(client.current.canSave() ? 'Đã chuyển lịch. Hãy đối chiếu các kỳ với ngân hàng.' : 'Máy chủ đã phản hồi; tải lại kiểm tra trước khi tiếp tục.');
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      if (error instanceof CloudError && (error.status === 401 || error.status === 403)) { setAccount(''); onDisconnect(); }
+      setMessage(`${error instanceof Error ? error.message : 'Không chuyển được lịch.'} Nếu đã gửi yêu cầu, tải lại kiểm tra trước khi thử lại.`);
+    } finally { if (pending.current === controller) { pending.current = null; setBusy(false); } }
+  };
   const saveCredit = async (values: CreditPurchase | string) => {
     if (pending.current || !client.current?.canSave()) return;
     const undo = typeof values === 'string';
@@ -232,6 +247,7 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
       {account && <CreditForm key={`${account}:${JSON.stringify(debts)}`} data={{ debts, wallets, tx: transactions }} disabled={busy || !client.current?.canSave()} onSave={saveCredit} />}
       {account && <BudgetForm data={{ wallets, tx: transactions, debts: [], budgets }} disabled={busy || !client.current?.canSave()} onSave={saveBudget} />}
       {account && <Button variant="outline" disabled={busy || !client.current?.canSave()} onClick={exportBackup}>Tải sao lưu đầy đủ từ tài khoản</Button>}
+      {account && debts.filter(d => d.mode === 'formula').map(d => <Button key={d.id} variant="outline" disabled={busy || !client.current?.canSave()} onClick={() => void convertDebt(d.id)}>Chuyển sang lịch tháng: {d.name}</Button>)}
       {message && <p className="footnote" role="status">{message}</p>}
     </>}
   </section>;

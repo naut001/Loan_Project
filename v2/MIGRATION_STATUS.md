@@ -13,9 +13,13 @@ is implemented with atomic updates, validation, and preservation of legacy paid 
 Individual credit purchases and undo are implemented: statement-period selection,
 linked schedule rows, no cash deduction, and protection against undoing paid purchases.
 Mixed batches validate all 1–100 entries on a draft before one conditional write.
+Formula-to-monthly-schedule conversion is implemented with confirmation and conditional
+cloud writes. It retains legacy paid markers and extension fields without generating
+historical payments or changing wallet balances. VM tests compare schedules with v1.3.
+Conversion has no reverse action; export a backup first and reconcile with the lender.
 
 Still required before switching the main site:
-- Debt CRUD, schedule conversion.
+- Debt CRUD.
 - Receivable CRUD and collection history/undo.
 - Full planning/calculator/report parity and ICS export.
 - Full backup restoration and local persistence/synchronization.
