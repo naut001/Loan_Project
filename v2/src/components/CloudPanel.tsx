@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { CloudError, createCloudClient, type WalletEntry, type CashEntry } from '../lib/cloud';
 import { BatchForm } from './BatchForm';
+import { PaymentForm } from './PaymentForm';
+import type { DebtPayment } from '../lib/payment';
 import { WalletForm } from './WalletForm';
 import { BudgetForm } from './BudgetForm';
 import { categories } from '../lib/budget';
@@ -30,6 +32,7 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
   const [transactions, setTransactions] = useState<Snapshot['tx']>({});
   const [editing, setEditing] = useState('');
   const [budgets, setBudgets] = useState<Snapshot['budgets']>({});
+  const [debts, setDebts] = useState<Snapshot['debts']>([]);
   const selectTransaction = (id: string) => {
     setEditing(id);
     const item = Object.values(transactions).flat().find(t => t.id === id);
@@ -44,6 +47,7 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
   const disconnect = () => {
     setTransactions({}); setEditing('');
     setBudgets({});
+    setDebts([]);
     setCategory('');
     pending.current?.abort(); pending.current = null;
     client.current?.disconnect(); setAccount(''); setPassword(''); setBusy(false); setWallets([]); setAmount(''); setNote('');
@@ -67,6 +71,7 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
       setWallets(data?.wallets || []); setWallet(data?.wallets[0]?.id || '');
       setTransactions(data?.tx || {}); setEditing(''); setAmount(''); setNote('');
       setBudgets(data?.budgets || {});
+      setDebts(data?.debts || []);
       setCategory('');
       setMessage(data ? 'Đã tải dữ liệu. Chỉ ghi khi bạn bấm lưu giao dịch bên dưới.' : 'Tài khoản chưa có dữ liệu. Hãy khởi tạo trong bản 1.3 rồi tải lại.');
     } catch (error) {
@@ -92,6 +97,22 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
     } catch (error) {
       if (!controller.signal.aborted && error instanceof CloudError && (error.status === 401 || error.status === 403)) { setAccount(''); setWallets([]); onDisconnect(); }
       if (!controller.signal.aborted) setMessage(`${error instanceof Error ? error.message : 'Lưu thất bại.'} Tải lại và kiểm tra lịch sử trước khi thử lại; nếu mất mạng, giao dịch có thể đã được lưu.`);
+    } finally { if (pending.current === controller) { pending.current = null; setBusy(false); } }
+  };
+  const savePayment = async (values: DebtPayment) => {
+    if (pending.current || !client.current?.canSave()) return;
+    if (!window.confirm(`Lưu thanh toán tổng ${(values.principal + values.interest + values.fee).toLocaleString('vi-VN')} đ và giảm kỳ nợ ${values.principal.toLocaleString('vi-VN')} đ?`)) return;
+    const controller = new AbortController(); pending.current = controller; setBusy(true); setMessage('Đang lưu thanh toán…');
+    try {
+      const data = await client.current.payDebt(values, controller.signal);
+      if (controller.signal.aborted) return;
+      setDebts(data.debts); setTransactions(data.tx);
+      onLoad(data, `Tài khoản ${account} · đã lưu thanh toán`);
+      setMessage(client.current.canSave() ? 'Đã lưu thanh toán. Không ghi lại ở bản 1.3.' : 'Máy chủ đã phản hồi; tải lại kiểm tra trước khi tiếp tục.');
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      if (error instanceof CloudError && (error.status === 401 || error.status === 403)) { setAccount(''); onDisconnect(); }
+      setMessage(`${error instanceof Error ? error.message : 'Không lưu được thanh toán.'} Nếu đã gửi yêu cầu, tải lại kiểm tra trước khi thử lại.`);
     } finally { if (pending.current === controller) { pending.current = null; setBusy(false); } }
   };
   const saveBatch = async (entries: CashEntry[]): Promise<boolean> => {
@@ -181,6 +202,7 @@ export function CloudPanel({ onLoad, onDisconnect }: { onLoad: (data: Snapshot |
       </form>}
       {account && <WalletForm key={`${account}:${JSON.stringify(wallets)}`} wallets={wallets} disabled={busy || !client.current?.canSave()} onSave={saveWallet} onRemove={id => saveWallet(undefined, id)} />}
       {account && wallets.length > 0 && <BatchForm key={`${account}:${JSON.stringify(wallets)}`} wallets={wallets} disabled={busy || !client.current?.canSave()} onSave={saveBatch} />}
+      {account && wallets.length > 0 && <PaymentForm key={`${account}:${JSON.stringify(debts)}:${JSON.stringify(wallets)}`} data={{ debts, wallets, tx: transactions }} disabled={busy || !client.current?.canSave()} onSave={savePayment} />}
       {account && <BudgetForm data={{ wallets, tx: transactions, debts: [], budgets }} disabled={busy || !client.current?.canSave()} onSave={saveBudget} />}
       {account && <Button variant="outline" disabled={busy || !client.current?.canSave()} onClick={exportBackup}>Tải sao lưu đầy đủ từ tài khoản</Button>}
       {message && <p className="footnote" role="status">{message}</p>}

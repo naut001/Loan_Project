@@ -1,6 +1,7 @@
 import { isCashEditable, parseSnapshot, type Snapshot } from './snapshot';
 import { localDate } from './format';
 import { categories } from './budget';
+import { applyDebtPayment, type DebtPayment } from './payment';
 
 export class CloudError extends Error {
   constructor(message: string, public status = 0) { super(message); }
@@ -113,6 +114,12 @@ export function createCloudClient(url: string, key: string, request: typeof fetc
       }
       const month = entry.date.slice(0, 7);
       (tx[month] ||= []).push({ ...existing, ...entry, note: entry.note.trim(), id: id || crypto.randomUUID(), to: entry.type === 'transfer' ? entry.to : '', category: entry.category ?? existing?.category ?? (entry.type === 'income' ? 'Lương' : 'Khác') });
+      return commit(payload, signal);
+    },
+    async payDebt(values: DebtPayment, signal?: AbortSignal): Promise<Snapshot> {
+      if (!session || !loaded || saving) throw new CloudError('Hãy tải lại dữ liệu tài khoản trước khi lưu.');
+      const payload = structuredClone(loaded.payload);
+      applyDebtPayment(payload, values);
       return commit(payload, signal);
     },
     async addCashBatch(entries: CashEntry[], signal?: AbortSignal): Promise<Snapshot> {
